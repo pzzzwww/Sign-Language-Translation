@@ -1,0 +1,41 @@
+# ============================================
+# 基于Vision Transformer的手语识别生成语音系统 — 依赖清单
+# ============================================
+# 安装方式：pip install -r requirements.txt
+
+# ---- 深度学习框架 ----
+torch>=2.0.0
+
+# ---- HuggingFace 生态 ----
+transformers>=4.30.0
+peft>=0.6.0
+datasets>=2.10.0
+
+# ---- 音视频处理 ----
+opencv-python>=4.8.0
+pillow>=10.0.0
+moviepy>=1.0.3
+pyttsx3>=2.90
+
+# ---- Web / API ----
+fastapi>=0.100.0
+uvicorn[standard]>=0.23.0
+
+# ---- 工具库 ----
+requests>=2.28.0
+loguru>=0.7.0
+tqdm>=4.66.0
+
+# ---- 手语识别模型依赖 ----
+# MediaPipe 手部检测（必需）
+mediapipe>=0.10.7
+# Hand-Gesture-19 (SigLIP2) 需要 HuggingFace transformers 已在上方声明
+
+# ---- 部署与演示 ----
+gradio>=4.0.0
+onnx>=1.14.0
+onnxruntime>=1.15.0
+
+# ---- CosyVoice2 (可选，Transformer TTS) ----
+# cosyvoice  # 从 ModelScope 安装: pip install cosyvoice
+# 完整安装: git clone https://github.com/FunAudioLLM/CosyVoice && cd CosyVoice && pip install -e .

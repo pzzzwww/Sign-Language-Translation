@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sl-translator"
+version = "0.4.0"
+description = "基于 Transformer 的手语识别生成语音系统"
+requires-python = ">=3.10"
+readme = "README.md"
+
+[project.scripts]
+sl-collect = "scripts.collect_data:main"
+sl-train = "scripts.train_csl:main"
+sl-serve = "src.backend.main:app"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*", "scripts*"]

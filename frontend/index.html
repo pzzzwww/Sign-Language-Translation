@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>基于Transformer的手语识别生成语音系统</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>基于Transformer的手语识别生成语音系统</h1>
+        <p class="subtitle">实时手语识别 · 语音合成系统</p>
+
+        <!-- 加载动画遮罩 -->
+        <div class="loading-overlay" id="loading-overlay" style="display:none;">
+            <div class="loading-content">
+                <div class="spinner"></div>
+                <span class="loading-text" id="loading-text">正在处理...</span>
+            </div>
+        </div>
+
+        <div class="layout-wrapper">
+            <!-- =========== 左栏：摄像头 + 实时字幕 =========== -->
+            <div class="left-column">
+                <!-- 摄像头画面（含检测框叠加） -->
+                <div class="card video-card">
+                    <div class="video-overlay-wrapper">
+                        <video id="video-feed" autoplay playsinline muted style="display: none;"></video>
+                        <canvas id="detection-canvas" class="detection-overlay"></canvas>
+                        <div class="camera-placeholder" id="placeholder">
+                            <span class="icon">📷</span>
+                            等待启动摄像头...
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 当前猜测：大框实时显示，自动确认 -->
+                <div class="card guess-card">
+                    <h2>🖐 当前手势</h2>
+                    <div class="guess-display" id="guess-display">
+                        <span class="guess-placeholder">等待手势...</span>
+                    </div>
+                    <div class="guess-hint">手势持续 1.5s 自动确认</div>
+                </div>
+
+                <!-- 检测图例 -->
+                <div class="detection-legend">
+                    <span class="legend-item" style="color:#3fb950;">🟢 正常识别</span>
+                    <span class="legend-item" style="color:#d29922;">🟡 置信度低</span>
+                    <span class="legend-item" style="color:#f85149;">🔴 未识别</span>
+                </div>
+
+                <!-- 性别识别 -->
+                <div class="card gender-card" id="gender-card" style="display:none;">
+                    <h2>识别性别</h2>
+                    <div class="gender-display" id="gender-display"></div>
+                </div>
+            </div>
+
+            <!-- =========== 右栏：控制 + Token + 翻译 + 历史 =========== -->
+            <div class="right-column">
+                <!-- 控制 -->
+                <div class="card controls-card">
+                    <div class="status-bar">
+                        <span class="status-dot" id="status-dot"></span>
+                        <span id="status-text">就绪</span>
+                        <span class="flow-step-badge" id="flow-badge" style="display:none;"></span>
+                    </div>
+                    <div class="controls">
+                        <button class="btn btn-success" id="btn-capture">▶ 开始采集</button>
+                        <button class="btn btn-danger"  id="btn-stop">■ 停止</button>
+                        <button class="btn btn-primary" id="btn-recognize">🔍 识别</button>
+                        <button class="btn"            id="btn-clear">✕ 清除</button>
+                    </div>
+                </div>
+
+                <!-- 已确认 Token 列表 -->
+                <div class="card">
+                    <h2>🔒 已确认词汇 <span class="token-count" id="token-count"></span></h2>
+                    <div class="token-list" id="token-list">
+                        <span style="color:#484f58;font-size:13px;">确认手势后显示...</span>
+                    </div>
+                    <div class="token-actions-row" id="token-actions-row" style="display:none;">
+                        <button class="btn btn-accent btn-sm" id="btn-compose">🧩 连词成句</button>
+                        <button class="btn btn-sm" id="btn-clear-tokens">✕ 清空全部</button>
+                    </div>
+                </div>
+
+                <!-- 翻译结果（含编辑 + 确认 + 语音播放） -->
+                <div class="card">
+                    <h2>💬 翻译结果</h2>
+
+                    <!-- 等待翻译 -->
+                    <div class="sentence-placeholder" id="sentence-placeholder">
+                        <span style="color:#484f58;font-size:14px;">等待翻译...</span>
+                    </div>
+
+                    <!-- 生成失败提示 -->
+                    <div class="error-feedback" id="error-feedback" style="display:none;">
+                        <div class="error-icon">❌</div>
+                        <div class="error-message" id="error-message">生成失败</div>
+                    </div>
+
+                    <!-- 可编辑文本框 + 大字模式 + 确认 -->
+                    <div id="translate-editor" style="display:none;">
+                        <textarea class="translate-textarea" id="translate-textarea" rows="3"></textarea>
+                        <div class="translate-actions">
+                            <button class="btn btn-accent" id="btn-large-editor">🔍 大字模式</button>
+                            <button class="btn btn-primary" id="btn-confirm">✅ 确认文本</button>
+                        </div>
+                    </div>
+
+                    <!-- 已确认文本 + 大字模式 + 生成语音 -->
+                    <div id="translate-confirmed" style="display:none;">
+                        <div class="confirmed-text" id="confirmed-text"></div>
+                        <div class="translate-actions">
+                            <button class="btn btn-accent" id="btn-large-text">🔍 大字模式</button>
+                            <button class="btn btn-success" id="btn-generate">🔊 生成语音</button>
+                        </div>
+                    </div>
+
+                    <!-- 播放语音 -->
+                    <div id="audio-player-section" style="display:none;">
+                        <div class="audio-player-row">
+                            <button class="btn btn-primary btn-play" id="btn-play">▶ 播放语音</button>
+                            <span class="audio-duration" id="audio-duration"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 日志 -->
+                <div class="card">
+                    <h2>📋 日志</h2>
+                    <div class="log-area" id="log-area"></div>
+                </div>
+
+                <!-- 历史记录 -->
+                <div class="history-section">
+                    <div class="history-header">
+                        <h2>📜 翻译历史</h2>
+                        <button class="btn" id="btn-refresh-history" style="padding:4px 12px;font-size:12px;">刷新</button>
+                    </div>
+                    <div id="history-list" class="history-list">
+                        <span style="color:#484f58;font-size:13px;">暂无记录</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 大字模式全屏覆盖层 -->
+    <div class="large-text-overlay" id="large-text-overlay" style="display:none;">
+        <div class="large-text-header">
+            <span class="large-text-title">交流模式</span>
+            <button class="large-text-close" id="btn-large-close">✕ 关闭</button>
+        </div>
+        <div class="large-text-body">
+            <div class="large-text-content" id="large-text-content"></div>
+        </div>
+    </div>
+
+    <script src="/static/js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,29 @@
+version: "3.9"
+
+services:
+  backend:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+      - ./audio:/app/audio
+      - ./src/models/cache:/app/models/cache
+    environment:
+      - HF_HOME=/app/models/cache
+      - HF_HUB_CACHE=/app/models/cache/hub
+    restart: unless-stopped
+
+  gradio:
+    build: .
+    command: python scripts/gradio_app.py --port 7860
+    ports:
+      - "7860:7860"
+    volumes:
+      - ./data:/app/data
+      - ./audio:/app/audio
+      - ./src/models/cache:/app/models/cache
+    environment:
+      - HF_HOME=/app/models/cache
+      - HF_HUB_CACHE=/app/models/cache/hub
+    restart: unless-stopped

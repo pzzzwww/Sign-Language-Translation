@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+*.pyo
+.git/
+.idea/
+data/
+audio/
+tmp/
+onnx/
+models/cache/
+*.pem
+.env
+.vscode/
