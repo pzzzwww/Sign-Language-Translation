@@ -3,6 +3,9 @@
 > 实时手语识别与语音合成系统 — 让无声的表达被听见。
 
 [![GitHub](https://img.shields.io/badge/GitHub-pzzzwww/Sign--Language--Translation-blue)](https://github.com/pzzzwww/Sign-Language-Translation)
+[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+
+> **全球唯一**的开源端到端中文手语→语音实时翻译系统。学术界只做单一环节，商业方案闭源收费。本项目纯 CPU 运行，MIT 协议，识别→LLM 翻译→TTS 语音完整闭环。
 
 ## 项目简介
 

@@ -113,8 +113,7 @@ class MediaPipeHandDetector:
                 "或设置环境变量 MEDIAPIPE_HAND_MODEL"
             )
 
-        # 【知识点：RunningMode】IMAGE=单帧独立检测，VIDEO=利用帧间连续性跟踪
-        # 这里用 IMAGE 模式，适合 WebSocket 逐帧推流场景
+        # 【知识点：RunningMode】VIDEO=利用帧间连续性跟踪，检测更稳定
         options = HandLandmarkerOptions(
             base_options=BaseOptions(model_asset_path=model),
             running_mode=RunningMode.IMAGE,
@@ -125,11 +124,10 @@ class MediaPipeHandDetector:
         )
         self._landmarker = HandLandmarker.create_from_options(options)
         logger.info(
-            "MediaPipe Hands 检测器初始化完成 "
-            "(min_det=%.2f, min_pres=%.2f, min_track=%.2f, max_hands=%d, model=%s)",
+            "MediaPipe Hands 检测器初始化完成 (IMAGE 模式)"
+            "(min_det=%.2f, min_pres=%.2f, max_hands=%d, model=%s)",
             min_detection_confidence,
             min_hand_presence_confidence,
-            min_tracking_confidence,
             max_num_hands,
             model,
         )
@@ -139,10 +137,11 @@ class MediaPipeHandDetector:
     # ------------------------------------------------------------------
 
     def detect(self, image: np.ndarray) -> list[dict]:
-        """对单帧图像进行手部检测（核心方法）。
+        """对单帧图像进行手部检测（VIDEO 模式，利用帧间追踪）。
 
         Args:
             image: (H, W, 3) BGR uint8 numpy array（OpenCV 默认颜色格式）
+            timestamp_ms: 可选，帧时间戳（毫秒）。不传则自动递增。
 
         Returns:
             hands_data: 检测到的手部列表，每项包含:
@@ -283,12 +282,7 @@ class MediaPipeHandDetector:
     # ------------------------------------------------------------------
 
     def reset(self) -> None:
-        """
-        重置跟踪状态。
-        在 IMAGE 模式下无需重置，此方法为 API 兼容保留。
-        （LIVE_STREAM 模式下需要调用此方法切换视频源）
-        """
-        # IMAGE 模式没有持久状态，无需操作
+        """重置跟踪状态（IMAGE 模式无需操作，API 兼容保留）。"""
         pass
 
     def close(self) -> None:

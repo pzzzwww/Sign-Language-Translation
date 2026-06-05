@@ -54,6 +54,7 @@ class StreamHandler:
         self._detect_interval = 1       # 每帧跑 MediaPipe 检测
         self._classify_interval = 1     # 每帧跑 CSL 分类
         self._last_hands: list[dict] = []
+        self._last_landmarks: np.ndarray | None = None  # 上一帧特征，用于运动检测
         self._last_token_count = 0       # 跟踪 recognizer 已确认 token 数量
         self._last_tokens_snapshot = ""  # 自动翻译去重
         self._translate_task: asyncio.Task | None = None
@@ -61,9 +62,9 @@ class StreamHandler:
         # 每个连接独立的 CSL 识别器（加载训练权重，追踪 Token 序列）
         self._recognizer = CSLRecognizer(
             model_path=CSL_MODEL_PATH,
-            confidence_threshold=0.4,
+            confidence_threshold=0.35,
             stability_threshold=2,
-            cooldown_frames=15,
+            cooldown_frames=8,
             use_vit=False,
         )
 
@@ -243,15 +244,24 @@ class StreamHandler:
             else:
                 hands_data = self._last_hands
 
-            # ---- 2. CSL 手语分类（跳帧）----
+            # ---- 2. CSL 手语分类（跳帧 + 运动检测）----
             run_classify = (self._classify_interval <= 1) or (self._frame_idx % self._classify_interval == 1)
             if run_classify and hands_data:
                 feature = build_hands_feature(hands_data)
                 avg_conf = np.mean([h["confidence"] for h in hands_data])
-                await loop.run_in_executor(
-                    None, self._recognizer.classify_frame,
-                    feature, avg_conf,
-                )
+
+                # 运动检测：手静止时不分类，避免误触发
+                motion = 1.0  # 默认有运动
+                if self._last_landmarks is not None:
+                    motion = float(np.mean(np.abs(feature - self._last_landmarks)))
+                self._last_landmarks = feature.copy()
+
+                # 阈值 0.001：仅过滤完全静止，轻微呼吸抖动即可通过
+                if motion > 0.001:
+                    await loop.run_in_executor(
+                        None, self._recognizer.classify_frame,
+                        feature, avg_conf,
+                    )
 
             # ---- 3. 实时猜测推送给前端 ----
             guess = self._recognizer.get_guess()

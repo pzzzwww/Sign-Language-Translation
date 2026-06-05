@@ -62,7 +62,7 @@
     var frameTimer = null;
     var offscreenCanvas = null;
     var offscreenCtx = null;
-    var FRAME_INTERVAL_MS = 80;  // ~12 fps
+    var FRAME_INTERVAL_MS = 250;  // ~4 fps（公网优化）
 
     var STATE = {
         IDLE:             "idle",
@@ -250,7 +250,7 @@
             offscreenCanvas.width = vw;
             offscreenCanvas.height = vh;
             offscreenCtx.drawImage(els.videoFeed, 0, 0, vw, vh);
-            var jpeg = offscreenCanvas.toDataURL("image/jpeg", 0.55);
+            var jpeg = offscreenCanvas.toDataURL("image/jpeg", 0.4);
             var base64 = jpeg.substring(jpeg.indexOf(",") + 1);
             send("process_frame", { data: base64 });
         }, FRAME_INTERVAL_MS);

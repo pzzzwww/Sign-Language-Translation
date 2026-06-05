@@ -25,6 +25,8 @@ from typing import Optional
 
 import numpy as np
 
+from src.config import CSL_INPUT_DIM, CSL_TOKEN_BLACKLIST
+
 logger = logging.getLogger(__name__)
 
 # 【知识点：依赖检查】PyTorch 是可选依赖，未安装时降级到启发式模式
@@ -234,8 +236,8 @@ class CSLRecognizer:
     """
 
     # 【知识点：序列长度】Transformer 需要固定长度输入，30 帧约 2-3 秒的手势
-    SEQUENCE_LENGTH = 18
-    HEURISTIC_MIN_FRAMES = 5  # 启发式模式仅需少量帧
+    SEQUENCE_LENGTH = 12
+    HEURISTIC_MIN_FRAMES = 3  # 启发式模式仅需少量帧
 
     def __init__(
         self,
@@ -258,7 +260,6 @@ class CSLRecognizer:
         self._vit_dim = vit_dim
 
         # 输入维度: 双手关键点 (126=左手63+右手63) + 可选 ViT 特征 (768)
-        from src.config import CSL_INPUT_DIM
         self._base_dim = CSL_INPUT_DIM
         self._input_dim = self._base_dim + vit_dim if use_vit else self._base_dim
 
@@ -282,13 +283,16 @@ class CSLRecognizer:
 
         # 已确认的 Token 列表
         self._tokens: list[str] = []
+        # 同词抑制：记录最后确认的词，短时间内不重复
+        self._last_confirmed_token: str = ""
+        self._same_token_cooldown: int = 0
 
         self._frame_count: int = 0
 
-    # 自动确认：同一猜测持续 10 帧（~0.8s）不动 → 自动锁定
-    AUTO_CONFIRM_FRAMES: int = 4
-    # 自动确认后冷却 15 帧（~1.2s），给手切换时间
-    AUTO_COOLDOWN_FRAMES: int = 6
+    # 自动确认：同一猜测持续 3 帧（~0.25s）不动 → 自动锁定
+    AUTO_CONFIRM_FRAMES: int = 3
+    # 自动确认后冷却 10 帧（~0.8s），给手切换时间
+    AUTO_COOLDOWN_FRAMES: int = 10
 
     # ------------------------------------------------------------------
     # 词汇表管理
@@ -514,10 +518,10 @@ class CSLRecognizer:
         while len(self._sequence_buffer) > self.SEQUENCE_LENGTH:
             self._sequence_buffer.pop(0)
 
-        # ★ 启发式模式仅需少量帧，Transformer模式需要更多
+        # ★ 识别启动：少量帧即可开始猜测，确认需要持续稳定性
         min_frames = (
             self.HEURISTIC_MIN_FRAMES if self._model is None
-            else self.SEQUENCE_LENGTH // 2
+            else max(4, self.SEQUENCE_LENGTH // 4)  # 4帧即可开始猜测
         )
 
         if len(self._sequence_buffer) < min_frames:
@@ -572,9 +576,34 @@ class CSLRecognizer:
                     old, token, label_id, confidence,
                 )
 
-        # 自动确认：同一猜测持续 18 帧 (~1.5s) → 自动锁定
+        # 同词抑制冷却
+        if self._same_token_cooldown > 0:
+            self._same_token_cooldown -= 1
+
+        # 自动确认：同一猜测持续 N 帧 → 自动锁定
         if self._guess_stable_count >= self.AUTO_CONFIRM_FRAMES:
+            # 同词抑制：同一个词在 3x 冷却期内不重复确认
+            if token == self._last_confirmed_token and self._same_token_cooldown > 0:
+                self._current_guess = None
+                self._guess_stable_count = 0
+                self._stability_count = 0
+                self._last_label = None
+                return None
+
+            # 黑名单过滤：与上一个已确认词相邻不合逻辑则丢弃
+            if self._tokens and (self._tokens[-1], token) in CSL_TOKEN_BLACKLIST:
+                logger.info("🚫 黑名单过滤: '%s' → '%s'（不合理相邻，已丢弃）",
+                           self._tokens[-1], token)
+                self._current_guess = None
+                self._guess_stable_count = 0
+                self._stability_count = 0
+                self._last_label = None
+                self._auto_cooldown = self.AUTO_COOLDOWN_FRAMES
+                return None
+
             self._tokens.append(token)
+            self._last_confirmed_token = token
+            self._same_token_cooldown = self.AUTO_COOLDOWN_FRAMES * 3
             logger.info("🔒 自动确认: '%s' (稳定 %d 帧, 累计 %d 个)",
                        token, self._guess_stable_count, len(self._tokens))
             self._current_guess = None
@@ -775,9 +804,18 @@ class CSLRecognizer:
     def confirm_current(self) -> str | None:
         """将当前猜测锁定到 Token 列表，清空猜测状态准备下一个手势。"""
         if self._current_guess is not None:
-            self._tokens.append(self._current_guess)
-            logger.info("🔒 确认 Token: '%s' (累计 %d 个)", self._current_guess, len(self._tokens))
-            confirmed = self._current_guess
+            token = self._current_guess
+            # 黑名单过滤
+            if self._tokens and (self._tokens[-1], token) in CSL_TOKEN_BLACKLIST:
+                logger.info("🚫 黑名单过滤(手动): '%s' → '%s'（不合理相邻，已丢弃）",
+                           self._tokens[-1], token)
+                self._current_guess = None
+                self._stability_count = 0
+                self._last_label = None
+                return None
+            self._tokens.append(token)
+            logger.info("🔒 确认 Token: '%s' (累计 %d 个)", token, len(self._tokens))
+            confirmed = token
             self._current_guess = None
             self._stability_count = 0
             self._last_label = None

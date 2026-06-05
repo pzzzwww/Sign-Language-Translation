@@ -303,11 +303,11 @@ def train(
     model = CSLTransformer(
         num_classes=num_classes,
         input_dim=CSL_INPUT_DIM,
-        d_model=192,
+        d_model=256,
         nhead=8,
-        num_layers=6,
-        dim_feedforward=768,
-        dropout=0.15,
+        num_layers=4,
+        dim_feedforward=1024,
+        dropout=0.1,
     ).to(device)
 
     n_params = sum(p.numel() for p in model.parameters())

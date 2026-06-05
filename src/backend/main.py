@@ -31,6 +31,7 @@ _sign_model = get_sign_language_model()
 _sign_model.load()  # 启动时预加载模型，避免首次连接等待
 sign_service = SignService(_sign_model)
 translate_service = TranslateService()
+translate_service._get_model()  # 启动时预加载翻译模型，避免首次请求等待/崩溃
 speech_service = SpeechService()
 
 
@@ -90,11 +91,22 @@ async def index():
 # ------------------------------------------------------------------
 
 if __name__ == "__main__":
+    import os
     import uvicorn
     from src.config import HOST, PORT, SSL_KEYFILE, SSL_CERTFILE
-    print(f"\n{'='*60}")
-    print(f"  基于Transformer的手语识别生成语音系统 v0.3")
-    print(f"  访问地址: https://localhost:{PORT}")
-    print(f"{'='*60}\n")
-    uvicorn.run(app, host=HOST, port=PORT, log_level="info",
-                ssl_keyfile=str(SSL_KEYFILE), ssl_certfile=str(SSL_CERTFILE))
+
+    _no_ssl = os.environ.get("NO_SSL", "").strip() in ("1", "true", "yes")
+    if _no_ssl:
+        print(f"\n{'='*60}")
+        print(f"  基于Transformer的手语识别生成语音系统 v0.3")
+        print(f"  访问地址: http://localhost:{PORT}")
+        print(f"  SSL: 已关闭（由 ngrok/反向代理 处理加密）")
+        print(f"{'='*60}\n")
+        uvicorn.run(app, host=HOST, port=PORT, log_level="info")
+    else:
+        print(f"\n{'='*60}")
+        print(f"  基于Transformer的手语识别生成语音系统 v0.3")
+        print(f"  访问地址: https://localhost:{PORT}")
+        print(f"{'='*60}\n")
+        uvicorn.run(app, host=HOST, port=PORT, log_level="info",
+                    ssl_keyfile=str(SSL_KEYFILE), ssl_certfile=str(SSL_CERTFILE))
