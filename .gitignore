@@ -51,3 +51,9 @@ data/
 
 # ONNX 导出
 onnx/
+
+# 启动脚本（含私有域名）
+start_public.ps1
+
+# 测试输出
+test_results.txt

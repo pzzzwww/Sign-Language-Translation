@@ -24,9 +24,11 @@ import os
 os.environ["HF_HOME"] = str(MODEL_CACHE_DIR)
 os.environ["HF_HUB_CACHE"] = str(MODEL_CACHE_DIR / "hub")
 # 国内用户使用 hf-mirror.com 镜像，避免下载超时
-os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
-# 离线模式：仅使用本地缓存，不尝试连接远程
-os.environ["HF_HUB_OFFLINE"] = "1"
+# 可通过 HF_ENDPOINT 环境变量覆盖，设为空字符串则走官方源
+os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
+# 离线模式：仅使用本地缓存。通过 HF_HUB_OFFLINE 环境变量控制
+# 设为 0 或 false 可恢复在线下载（服务器首次部署需要）
+os.environ.setdefault("HF_HUB_OFFLINE", "1")
 
 # ---- 模型路径 ----
 LORA_PATH = SRC / "models" / "text_model" / "lora_word2sent"
@@ -76,10 +78,14 @@ TTS_RATE = 200         # 语速，默认200词/分钟
 # ---- 服务器 ----
 # 【知识点：FastAPI + uvicorn】FastAPI 是 Python 异步 Web 框架，uvicorn 是 ASGI 服务器
 # 【知识点：SSL/TLS】自签名证书实现 HTTPS，浏览器会警告但数据加密传输
-HOST = "0.0.0.0"       # 0.0.0.0 表示监听所有网络接口，局域网可访问
-PORT = 8000
-SSL_KEYFILE = ROOT / "certs" / "key.pem"
-SSL_CERTFILE = ROOT / "certs" / "cert.pem"
+# 部署时通过环境变量覆盖：HOST / PORT / SSL_KEYFILE / SSL_CERTFILE
+# SSL_KEYFILE 为空字符串时禁用 HTTPS（配合 Nginx 反代使用）
+HOST = os.environ.get("HOST", "0.0.0.0")
+PORT = int(os.environ.get("PORT", "8000"))
+_ssl_key = os.environ.get("SSL_KEYFILE")  # None=未设置用默认值, ""=禁用HTTPS
+_ssl_cert = os.environ.get("SSL_CERTFILE")
+SSL_KEYFILE = Path(_ssl_key) if _ssl_key else (ROOT / "certs" / "key.pem")
+SSL_CERTFILE = Path(_ssl_cert) if _ssl_cert else (ROOT / "certs" / "cert.pem")
 
 # ---- 临时文件 ----
 TEMP_DIR = ROOT / "tmp"
@@ -88,7 +94,7 @@ TEMP_DIR.mkdir(exist_ok=True)
 # ---- 文本翻译模式 ----
 # 【知识点：降级策略】auto 模式下：优先 Qwen2 → 失败则降级到 Mock 映射表
 # qwen = 强制 Qwen2（失败报错），mock = 仅用映射表（不加载模型）
-TRANSLATION_MODE: str = "qwen"
+TRANSLATION_MODE: str = "auto"
 
 # ---- 音频 ----
 AUDIO_DIR = ROOT / "audio"

@@ -95,8 +95,10 @@ if __name__ == "__main__":
     import uvicorn
     from src.config import HOST, PORT, SSL_KEYFILE, SSL_CERTFILE
 
-    _no_ssl = os.environ.get("NO_SSL", "").strip() in ("1", "true", "yes")
-    if _no_ssl:
+    _no_ssl_env = os.environ.get("NO_SSL", "").strip() in ("1", "true", "yes")
+    _ssl_ok = (str(SSL_KEYFILE) and str(SSL_CERTFILE)
+               and SSL_KEYFILE.exists() and SSL_CERTFILE.exists())
+    if _no_ssl_env or not _ssl_ok:
         print(f"\n{'='*60}")
         print(f"  基于Transformer的手语识别生成语音系统 v0.3")
         print(f"  访问地址: http://localhost:{PORT}")
