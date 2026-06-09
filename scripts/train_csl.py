@@ -7,9 +7,7 @@
 涉及知识点：
   - 滑动窗口数据切分：将变长序列切为固定长度训练样本
   - 数据增强 (Data Augmentation): 人为增加训练数据多样性，防止过拟合
-  - 训练/验证分割：80% 训练、20% 验证，评估模型泛化能力
-  - 类别权重 (Class Weight): 样本少的手势给更高权重，防止模型偏向多数类
-  - 过采样 (Oversampling): 对弱势类别重复采样，进一步缓解类别不平衡
+  - 文件级数据分割：70% 训练 / 15% 验证 / 15% 测试，防止同一录制数据泄露
   - AdamW 优化器: Adam + 解耦权重衰减，当前主流优化器
   - 余弦退火 (Cosine Annealing): 学习率随训练逐渐降低
   - 早停 (Early Stopping): 验证准确率不提升就停，防止过拟合
@@ -44,20 +42,19 @@ VOCAB_PATH = DATA_DIR / "vocabulary.json"
 # 序列长度（帧数）
 SEQUENCE_LENGTH = 30
 # 滑动窗口步长（帧）
-WINDOW_STRIDE = 3
+WINDOW_STRIDE = 15
 
 
 # ======================================================================
 # 数据加载
 # ======================================================================
 
-def load_gesture_data() -> tuple[list[np.ndarray], list[int], list[str]]:
+def load_gesture_data() -> tuple[list[tuple[np.ndarray, int]], list[str]]:
     """
-    加载所有采集的手势数据。
+    加载所有采集的手势数据（文件级别，不做滑动窗口切分）。
 
     Returns:
-        sequences: [(30, 63), ...] 固定长度关键点序列
-        labels: 对应的类别 ID 列表
+        file_data: [(npy_array, label_id), ...] 每个 .npy 文件一个条目
         vocabulary: 词汇表列表
     """
     if not VOCAB_PATH.exists():
@@ -69,13 +66,11 @@ def load_gesture_data() -> tuple[list[np.ndarray], list[int], list[str]]:
     with open(VOCAB_PATH, "r", encoding="utf-8") as f:
         vocab_dict: dict[str, int] = json.load(f)
 
-    # label_id → 手势名
     vocabulary = [""] * len(vocab_dict)
     for name, idx in vocab_dict.items():
         vocabulary[idx] = name
 
-    sequences: list[np.ndarray] = []
-    labels: list[int] = []
+    file_data: list[tuple[np.ndarray, int]] = []
 
     for gesture_name, label_id in vocab_dict.items():
         gesture_dir = DATA_DIR / gesture_name
@@ -86,34 +81,19 @@ def load_gesture_data() -> tuple[list[np.ndarray], list[int], list[str]]:
             continue
 
         for npy_file in npy_files:
-            data = np.load(str(npy_file))  # (T, 63)
+            data = np.load(str(npy_file))
 
             if data.ndim != 2 or data.shape[1] != CSL_INPUT_DIM:
                 logger.warning("跳过异常文件: %s (shape=%s, 期望维度=%d)",
                              npy_file.name, data.shape, CSL_INPUT_DIM)
                 continue
 
-            # 滑动窗口切分
-            for start in range(0, data.shape[0] - SEQUENCE_LENGTH + 1, WINDOW_STRIDE):
-                window = data[start:start + SEQUENCE_LENGTH]
-                sequences.append(window)
-                labels.append(label_id)
+            file_data.append((data, label_id))
 
-        logger.info("加载 [%s]: %d 文件 → %d 样本 (stride=%d)",
-                    gesture_name, len(npy_files),
-                    len(sequences) - (len(sequences) - len(labels) + 1 if sequences else 0),
-                    WINDOW_STRIDE)
+        logger.info("加载 [%s]: %d 个文件", gesture_name, len(npy_files))
 
-    # 重新统计
-    n_per_class = {}
-    for l in labels:
-        n_per_class[vocabulary[l]] = n_per_class.get(vocabulary[l], 0) + 1
-
-    logger.info("数据加载完成: %d 个样本, %d 类", len(sequences), len(vocabulary))
-    for name, count in sorted(n_per_class.items()):
-        logger.info("  %s: %d 样本", name, count)
-
-    return sequences, labels, vocabulary
+    logger.info("数据加载完成: %d 个文件, %d 类", len(file_data), len(vocabulary))
+    return file_data, vocabulary
 
 
 # ======================================================================
@@ -224,8 +204,7 @@ class GestureDataset:
 # ======================================================================
 
 def train(
-    sequences: list[np.ndarray],
-    labels: list[int],
+    file_data: list[tuple[np.ndarray, int]],
     vocabulary: list[str],
     epochs: int = 60,
     batch_size: int = 16,
@@ -236,68 +215,61 @@ def train(
 ) -> None:
     import torch
     import torch.nn as nn
-    from torch.utils.data import DataLoader, random_split, WeightedRandomSampler
+    from torch.utils.data import DataLoader
     from src.models.sign_language_model.csl_recognizer import CSLTransformer
 
     num_classes = len(vocabulary)
 
-    # --- 数据分割 ---
-    dataset = GestureDataset(sequences, labels, augment=False)
-    n_total = len(dataset)
-    n_train = int(n_total * 0.8)
-    n_val = n_total - n_train
+    # --- 逐类分层数据分割：70% 训练 / 15% 验证 / 15% 测试 ---
+    # 每个手势内部洗牌后按比例分配，确保每类在三个集合中都有代表
+    rng = np.random.default_rng(42)
+    train_files: list[tuple[np.ndarray, int]] = []
+    val_files: list[tuple[np.ndarray, int]] = []
+    test_files: list[tuple[np.ndarray, int]] = []
 
-    train_dataset, val_dataset = random_split(dataset, [n_train, n_val])
-    train_dataset.dataset._augment = True  # type: ignore[attr-defined]
+    for label_id in range(num_classes):
+        class_files = [(d, l) for d, l in file_data if l == label_id]
+        n = len(class_files)
+        if n == 0:
+            continue
+        idx = rng.permutation(n)
+        n_train = int(n * 0.7)
+        n_val = int(n * 0.15)
+        train_files.extend(class_files[i] for i in idx[:n_train])
+        val_files.extend(class_files[i] for i in idx[n_train:n_train + n_val])
+        test_files.extend(class_files[i] for i in idx[n_train + n_val:])
 
-    # ==== 类别权重（自动补偿样本不均衡）====
-    # 【知识点：类别不平衡处理】如果"你好"有 2000 个样本而"谢谢"只有 200 个，
-    # 模型会倾向预测"你好"。类别权重让少数类在损失函数中贡献更大。
-    train_labels = [labels[i] for i in train_dataset.indices]
-    class_counts = np.bincount(train_labels, minlength=num_classes)
-    # 倒数加权 + 平滑（+1 防止除零）
-    class_weights = 1.0 / (class_counts.astype(np.float32) + 1)
-    # 归一化：权重平均 = num_classes
-    class_weights = class_weights / class_weights.sum() * num_classes
-    class_weights_tensor = torch.tensor(class_weights, dtype=torch.float32).to(device)
+    logger.info("逐类分层划分: 训练 %d / 验证 %d / 测试 %d (共 %d 个文件)",
+                len(train_files), len(val_files), len(test_files), len(file_data))
 
-    logger.info("类别权重 (越少数样本权重越高):")
-    for i, (name, count, w) in enumerate(
-        zip(vocabulary, class_counts, class_weights)
-    ):
-        logger.info("  %s: 样本=%d, 权重=%.2f", name, count, w)
+    def _make_windows(
+        files: list[tuple[np.ndarray, int]],
+    ) -> tuple[list[np.ndarray], list[int]]:
+        seqs: list[np.ndarray] = []
+        lbls: list[int] = []
+        for data, label in files:
+            for start in range(0, data.shape[0] - SEQUENCE_LENGTH + 1, WINDOW_STRIDE):
+                seqs.append(data[start:start + SEQUENCE_LENGTH])
+                lbls.append(label)
+        return seqs, lbls
 
-    # ==== 过采样（Oversampling）====
-    # 【知识点：过采样】如果某类样本数 < 平均值的 50%，就把该类样本重复放入训练集
-    # 这样每个 batch 中弱势类的出现概率更高，缓解类别不平衡
-    oversampled_indices = list(train_dataset.indices)
-    mean_count = class_counts[class_counts > 0].mean()
-    threshold = max(1, mean_count * 0.5)
-    for class_id, count in enumerate(class_counts):
-        if count > 0 and count < threshold:
-            class_indices = [j for j, idx in enumerate(train_dataset.indices)  # type: ignore[attr-defined]
-                           if labels[idx] == class_id]
-            repeat = int(threshold / count) - 1
-            oversampled_indices.extend(class_indices * repeat)
-            logger.info("  过采样: %s %d→%d (+%d)",
-                        vocabulary[class_id], count, count * (repeat + 1), count * repeat)
+    train_sequences, train_labels = _make_windows(train_files)
+    val_sequences, val_labels = _make_windows(val_files)
+    test_sequences, test_labels = _make_windows(test_files)
 
-    # 用过采样后的索引重建 DataLoader
-    train_sampler = WeightedRandomSampler(
-        [class_weights[labels[i]] for i in oversampled_indices],
-        num_samples=len(oversampled_indices),
-        replacement=True,
-    )
-    train_dataset_oversampled = GestureDataset(
-        [sequences[i] for i in oversampled_indices],
-        [labels[i] for i in oversampled_indices],
-        augment=True,
-    )
-    train_loader = DataLoader(train_dataset_oversampled, batch_size=batch_size)
+    logger.info("窗口数: 训练 %d | 验证 %d | 测试 %d",
+                len(train_sequences), len(val_sequences), len(test_sequences))
+
+    train_dataset = GestureDataset(train_sequences, train_labels, augment=False)
+    val_dataset = GestureDataset(val_sequences, val_labels, augment=False)
+    test_dataset = GestureDataset(test_sequences, test_labels, augment=False)
+
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 
-    logger.info("过采样后训练集: %d 样本 | 验证集: %d 样本 | 批次大小: %d",
-                len(oversampled_indices), n_val, batch_size)
+    logger.info("训练集: %d 样本 | 验证集: %d 样本 | 测试集: %d 样本 | 批次大小: %d",
+                len(train_sequences), len(val_labels), len(test_labels), batch_size)
 
     # --- 模型 ---
     model = CSLTransformer(
@@ -313,10 +285,8 @@ def train(
     n_params = sum(p.numel() for p in model.parameters())
     logger.info("模型参数量: %d", n_params)
 
-    # --- 损失（类别加权 + 标签平滑） & 优化器 ---
-    criterion = nn.CrossEntropyLoss(
-        weight=class_weights_tensor, label_smoothing=0.1,
-    )
+    # --- 损失 & 优化器 ---
+    criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.AdamW(
         model.parameters(), lr=lr, weight_decay=weight_decay,
     )
@@ -429,39 +399,65 @@ def train(
     logger.info("词汇表已保存: %s (%d 个手势)", vocab_path, len(vocabulary))
 
     # ==================================================================
-    # 【知识点：混淆矩阵 Confusion Matrix】
-    # 行 = 真实标签，列 = 预测标签
-    # 对角线 = 预测正确，非对角线 = 混淆错误
-    # 例：confusion[0,2]=5 → "你好"被误判为"对不起"5次
+    # 测试集评估（held-out，未参与训练/验证）
     # ==================================================================
-    logger.info("\n=== 验证集混淆矩阵 (best model, 行=真实, 列=预测) ===")
-    model.load_state_dict(best_model_state or {})
+    logger.info("\n" + "=" * 50)
+    logger.info("=== 测试集评估 (held-out) ===")
+    logger.info("=" * 50)
+
+    if best_model_state is not None:
+        model.load_state_dict(best_model_state)
     model.eval()
 
-    import itertools
     confusion = np.zeros((num_classes, num_classes), dtype=np.int32)
+    test_correct = 0
+    test_total = 0
 
     with torch.no_grad():
-        for x, y in val_loader:
+        for x, y in test_loader:
             x, y = x.to(device), y.to(device)
             logits = model(x)
             preds = logits.argmax(dim=1)
+            test_correct += (preds == y).sum().item()
+            test_total += y.size(0)
             for true, pred in zip(y.cpu(), preds.cpu()):
                 confusion[true.item(), pred.item()] += 1
 
-    # 打印每类准确率 + 最常混淆的类别
+    test_acc = test_correct / test_total * 100 if test_total > 0 else 0
+    logger.info("测试集总体准确率: %.2f%% (%d/%d)", test_acc, test_correct, test_total)
+
+    # 每类 Precision / Recall / F1
+    precision_per_class = np.zeros(num_classes)
+    recall_per_class = np.zeros(num_classes)
+    f1_per_class = np.zeros(num_classes)
+    for i in range(num_classes):
+        tp = confusion[i, i]
+        fp = confusion[:, i].sum() - tp
+        fn = confusion[i, :].sum() - tp
+        precision_per_class[i] = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+        recall_per_class[i] = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+        f1_per_class[i] = (2 * precision_per_class[i] * recall_per_class[i]
+                           / (precision_per_class[i] + recall_per_class[i])
+                           if (precision_per_class[i] + recall_per_class[i]) > 0 else 0.0)
+
+    macro_f1 = f1_per_class.mean() * 100
+    logger.info("宏平均 F1: %.2f%% | 宏平均 Precision: %.2f%% | 宏平均 Recall: %.2f%%",
+                macro_f1, precision_per_class.mean() * 100, recall_per_class.mean() * 100)
+
+    logger.info("\n--- 各类指标 ---")
     for i in range(num_classes):
         total_i = confusion[i].sum()
         correct_i = confusion[i, i]
-        acc = correct_i / total_i * 100 if total_i > 0 else 0
+        acc = recall_per_class[i] * 100
 
-        # 找出该类最常被误判成的类别（排除对角线）
         mistakes = [(confusion[i, j], vocabulary[j])
                    for j in range(num_classes) if j != i and confusion[i, j] > 0]
         mistakes.sort(reverse=True)
 
         status = "✓" if acc >= 85 else ("⚠" if acc >= 60 else "✗")
-        line = f"  {status} {vocabulary[i]}: {acc:.1f}% ({correct_i}/{total_i})"
+        line = (f"  {status} {vocabulary[i]}: Acc={acc:.1f}% P={precision_per_class[i]:.2f} "
+                f"R={recall_per_class[i]:.2f} F1={f1_per_class[i]:.2f} "
+                f"({correct_i}/{total_i})")
         if mistakes:
             top_3 = mistakes[:3]
             line += "  混淆→ " + ", ".join(
@@ -469,8 +465,7 @@ def train(
             )
         logger.info(line)
 
-    # 打印完整混淆矩阵表格
-    logger.info("\n--- 完整混淆矩阵 ---")
+    logger.info("\n--- 完整混淆矩阵 (行=真实, 列=预测) ---")
     col_width = max(len(name) for name in vocabulary) + 1
     header = " " * col_width + "".join(f"{name:>6}" for name in vocabulary)
     logger.info(header)
@@ -513,20 +508,19 @@ def main() -> None:
 
     logger.info("训练设备: %s", device)
 
-    # 1. 加载数据
-    sequences, labels, vocabulary = load_gesture_data()
+    # 1. 加载数据（文件级别，不做窗口切分）
+    file_data, vocabulary = load_gesture_data()
 
-    if len(sequences) < 10:
+    if len(file_data) < 10:
         logger.error(
-            "训练数据不足 (仅 %d 个样本)。请先采集更多数据: python scripts/collect_data.py",
-            len(sequences),
+            "训练数据不足 (仅 %d 个文件)。请先采集更多数据: python scripts/collect_data.py",
+            len(file_data),
         )
         return
 
-    # 2. 训练
+    # 2. 训练（内部做文件级划分 + 滑动窗口）
     train(
-        sequences=sequences,
-        labels=labels,
+        file_data=file_data,
         vocabulary=vocabulary,
         epochs=args.epochs,
         batch_size=args.batch,
