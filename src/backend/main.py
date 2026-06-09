@@ -102,7 +102,7 @@ if __name__ == "__main__":
         print(f"\n{'='*60}")
         print(f"  基于Transformer的手语识别生成语音系统 v0.3")
         print(f"  访问地址: http://localhost:{PORT}")
-        print(f"  SSL: 已关闭（由 ngrok/反向代理 处理加密）")
+        print(f"  SSL: 已关闭")
         print(f"{'='*60}\n")
         uvicorn.run(app, host=HOST, port=PORT, log_level="info")
     else:
