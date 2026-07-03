@@ -1,6 +1,5 @@
 """
 WebSocket 连接管理器。
-
 每个客户端使用自己的摄像头 → 发帧到服务端 → 服务端处理 → 返回结果。
 每个 WebSocket 连接维护独立的识别会话。
 """
@@ -10,16 +9,11 @@ from __future__ import annotations
 import asyncio
 import base64
 import logging
-import time
-
 import cv2
 import numpy as np
 from fastapi import WebSocket, WebSocketDisconnect
-
 from src.services.translate_service import TranslateService
 from src.services.speech_service import SpeechService
-from src.services.cosyvoice_tts import CosyVoice2TTSService
-from src.services.gender_service import GenderService
 from src.services import history_service
 from src.models.sign_language_model.csl_recognizer import CSLRecognizer
 from src.models.sign_language_model.real_recognizer import build_hands_feature
@@ -29,36 +23,25 @@ from src.config import AUDIO_DIR, CSL_MODEL_PATH
 class StreamHandler:
     """每个 WebSocket 连接一个实例，独立识别会话。"""
 
-    def __init__(
-        self,
-        sign,         # SignService (共享 MediaPipe detector)
-        translate: TranslateService,
-        speech: SpeechService,
-    ) -> None:
+    def __init__(self,sign,translate: TranslateService,speech: SpeechService) -> None:
         self._sign = sign
         self.translate = translate
         self.speech = speech
-        self.gender = GenderService()
-
         self._ws: WebSocket | None = None
         self._running = False
-
         # 当前会话状态
         self._current_tokens: list[str] = []
         self._current_sentence: str = ""
         self._current_history_id: int | None = None
         self._current_gender: str = "female"
-
         # 跳帧优化 + 自动翻译
         self._frame_idx = 0
         self._detect_interval = 1       # 每帧跑 MediaPipe 检测
         self._classify_interval = 1     # 每帧跑 CSL 分类
         self._last_hands: list[dict] = []
-        self._last_landmarks: np.ndarray | None = None  # 上一帧特征，用于运动检测
         self._last_token_count = 0       # 跟踪 recognizer 已确认 token 数量
         self._last_tokens_snapshot = ""  # 自动翻译去重
         self._translate_task: asyncio.Task | None = None
-
         # 每个连接独立的 CSL 识别器（加载训练权重，追踪 Token 序列）
         self._recognizer = CSLRecognizer(
             model_path=CSL_MODEL_PATH,
@@ -67,15 +50,11 @@ class StreamHandler:
             cooldown_frames=8,
             use_vit=False,
         )
-
-    # ------------------------------------------------------------------
-    # 入口
-    # ------------------------------------------------------------------
-
-    async def handle(self, ws: WebSocket) -> None:
+    #入口
+    async def handle(self, ws: WebSocket) -> None:#同意连接，把模型加载好，通知前端"我准备好了"，客户端每发来一帧，处理一帧
         _log = logging.getLogger(__name__)
         try:
-            await ws.accept()
+            await ws.accept()#同意连接需要时间，cpu去办别的事情
         except WebSocketDisconnect:
             return
         self._ws = ws
@@ -93,9 +72,9 @@ class StreamHandler:
             await loop.run_in_executor(None, self._recognizer.load)
             await self._send(ws, type="status", state="idle", message="模型就绪")
 
-            while self._running:
-                msg = await ws.receive_json()
-                await self._on_message(ws, msg)
+            while self._running: #客户端发一帧 → 服务端处理一帧 → 等下一帧 → 再处理。一直循环到客户端断开或出错。
+                msg = await ws.receive_json()# 等客户端发来一帧
+                await self._on_message(ws, msg) # 处理这一帧
         except WebSocketDisconnect:
             pass
         except Exception:
@@ -103,21 +82,16 @@ class StreamHandler:
         finally:
             await self._cleanup()
 
-    # ------------------------------------------------------------------
-    # 消息路由
-    # ------------------------------------------------------------------
-
-    async def _on_message(self, ws: WebSocket, msg: dict) -> None:
+    #分发处理
+    async def _on_message(self, ws: WebSocket, msg: dict) -> None:#客户端发的每条消息里带一个 action 字段，这个函数看 action 是什么，调对应的处理逻辑。
         action = msg.get("action", "")
 
         if action == "start_capture":
             await self._start_session(ws)
-        elif action == "process_frame":
+        elif action == "process_frame": #处理一帧画面
             await self._process_frame(ws, msg.get("data", ""))
         elif action == "stop":
             await self._stop_session(ws)
-        elif action == "recognize":
-            await self._run_recognize(ws)
         elif action == "confirm_token":
             confirmed = self._recognizer.confirm_current()
             if confirmed:
@@ -144,7 +118,7 @@ class StreamHandler:
         elif action == "confirm_translate":
             text = msg.get("text", "")
             await self._confirm_translate(ws, text)
-        elif action == "generate_audio":
+        elif action == "generate_audio":#生成语音
             await self._generate_audio(ws)
         elif action == "confirm_and_generate":
             text = msg.get("text", "")
@@ -194,7 +168,15 @@ class StreamHandler:
 
     async def _process_frame(self, ws: WebSocket, data: str) -> None:
         """
-        客户端发来一帧 base64 JPEG → 跳帧检测 → 跳帧分类 → 实时猜测 + 自动翻译。
+        客户端发来的：一帧=字符串
+        服务端做的事：
+        ① base64 解码 → 二进制 → numpy → 图片
+        ② MediaPipe 提取 21 个手部关键点坐标
+        ③ 关键点坐标发给前端（前端按照关键点范围自己画框画点）
+        ④ 关键点坐标拼成 126 维向量 → 模型分类 → 手势文字(攒够12个126维向量送入模型推理一次)
+        ⑤ 新确认的多个手势文字 → 加入当前 token 列表
+        ⑥ token 列表有变化 → 后台自动调 Qwen2 翻译
+        ⑦ 翻译结果 → 推送给前端显示
 
         优化：MediaPipe 每 2 帧跑 1 次，CSL 分类每 3 帧跑 1 次。
         """
@@ -250,18 +232,10 @@ class StreamHandler:
                 feature = build_hands_feature(hands_data)
                 avg_conf = np.mean([h["confidence"] for h in hands_data])
 
-                # 运动检测：手静止时不分类，避免误触发
-                motion = 1.0  # 默认有运动
-                if self._last_landmarks is not None:
-                    motion = float(np.mean(np.abs(feature - self._last_landmarks)))
-                self._last_landmarks = feature.copy()
-
-                # 阈值 0.001：仅过滤完全静止，轻微呼吸抖动即可通过
-                if motion > 0.001:
-                    await loop.run_in_executor(
-                        None, self._recognizer.classify_frame,
-                        feature, avg_conf,
-                    )
+                await loop.run_in_executor(
+                    None, self._recognizer.classify_frame,
+                    feature, avg_conf,
+                )
 
             # ---- 3. 实时猜测推送给前端 ----
             guess = self._recognizer.get_guess()
@@ -312,55 +286,7 @@ class StreamHandler:
             pass
 
     # ------------------------------------------------------------------
-    # 识别 + 翻译（用户主动触发）
-    # ------------------------------------------------------------------
-
-    async def _run_recognize(self, ws: WebSocket) -> None:
-        loop = asyncio.get_event_loop()
-
-        # 获取当前会话所有 Token
-        all_tokens = self._recognizer.get_tokens()
-        existing_set = set(self._current_tokens)
-        for t in all_tokens:
-            if t not in existing_set:
-                self._current_tokens.append(t)
-                existing_set.add(t)
-
-        tokens = self._current_tokens
-
-        if not tokens:
-            await self._send(ws, type="error", code="NO_TOKENS",
-                             message="还没有识别到手势，请先做手势")
-            return
-
-        await self._send(ws, type="tokens", data=tokens, count=len(tokens))
-        await self._send(ws, type="status", state="recognizing",
-                         message="正在识别手语...")
-
-        # 性别识别
-        self._current_gender = self.gender.detect(tokens)
-        await self._send(ws, type="gender_result", gender=self._current_gender)
-
-        # 翻译
-        await self._send(ws, type="status", state="translating",
-                         message="正在翻译内容...")
-        try:
-            sentence = await loop.run_in_executor(
-                None, self.translate.translate, tokens,
-            )
-        except (ValueError, RuntimeError) as e:
-            await self._send(ws, type="error", code="TRANSLATE_FAILED",
-                             message=str(e))
-            return
-
-        self._current_sentence = sentence
-        await self._send(ws, type="translation_done", data=sentence,
-                         tokens=tokens, gender=self._current_gender)
-        await self._send(ws, type="status", state="waiting_confirm",
-                         message="请确认或修改翻译结果")
-
-    # ------------------------------------------------------------------
-    # 确认 / 生成语音（不变）
+    # 确认 / 生成语音
     # ------------------------------------------------------------------
 
     async def _confirm_translate(self, ws: WebSocket, text: str) -> None:

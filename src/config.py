@@ -94,7 +94,7 @@ TEMP_DIR.mkdir(exist_ok=True)
 # ---- 文本翻译模式 ----
 # 【知识点：降级策略】auto 模式下：优先 Qwen2 → 失败则降级到 Mock 映射表
 # qwen = 强制 Qwen2（失败报错），mock = 仅用映射表（不加载模型）
-TRANSLATION_MODE: str = "auto"
+TRANSLATION_MODE: str = "qwen"
 
 # ---- 音频 ----
 AUDIO_DIR = ROOT / "audio"

@@ -5,11 +5,9 @@ FastAPI 应用入口。
 from __future__ import annotations
 
 import atexit
-
 from fastapi import FastAPI, WebSocket
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-
 from src.api.routes import router as api_router
 from src.websocket.handler import StreamHandler
 from src.config import AUDIO_DIR, ROOT
@@ -70,8 +68,8 @@ if STATIC_DIR.exists():
 # WebSocket 端点
 # ------------------------------------------------------------------
 
-@app.websocket("/ws/stream")
-async def websocket_endpoint(ws: WebSocket):
+@app.websocket("/ws/stream")#FastAPI带WebSocket类
+async def websocket_endpoint(ws: WebSocket):#FastAPI框架把WebSocket实例对象传进来
     handler = StreamHandler(sign_service, translate_service, speech_service)
     await handler.handle(ws)
 

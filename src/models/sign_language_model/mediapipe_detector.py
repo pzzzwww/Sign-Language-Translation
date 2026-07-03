@@ -137,19 +137,12 @@ class MediaPipeHandDetector:
     # ------------------------------------------------------------------
 
     def detect(self, image: np.ndarray) -> list[dict]:
-        """对单帧图像进行手部检测（VIDEO 模式，利用帧间追踪）。
-
-        Args:
-            image: (H, W, 3) BGR uint8 numpy array（OpenCV 默认颜色格式）
-            timestamp_ms: 可选，帧时间戳（毫秒）。不传则自动递增。
-
-        Returns:
-            hands_data: 检测到的手部列表，每项包含:
-              - landmarks: (21, 3) 归一化坐标（xy 0-1, z 相对手腕深度）
-              - bbox: (x, y, w, h) 像素坐标检测框
-              - handedness: 'Left' / 'Right' 左右手标签
-              - confidence: 检测置信度 0-1
-              - landmarks_pixel: (21, 2) 实际像素坐标，用于前端绘制
+        """
+        一张图片 → detect() → 每只手的 4 样数据：
+                         ① 关键点坐标    → 拼 126 维 → 模型分类
+                         ② 像素坐标      → 前端画点
+                         ③ 检测框        → 前端画框 + ViT 裁切手部区域
+                         ④ 左右手+置信度  → 左手镜像 + 过滤低质量检测 + 框颜色
         """
         # 【知识点：BGR→RGB】OpenCV 默认 BGR，MediaPipe 需要 RGB
         rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)

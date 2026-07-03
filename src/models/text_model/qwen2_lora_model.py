@@ -9,10 +9,13 @@ import torch
 from src.interfaces import TextTranslateModel
 
 _SYSTEM_PROMPT = (
-    "你是手语文本整理助手。将手语识别 token 重组为语义通顺的自然中文句子。"
-    "规则：必须使用全部输入 token、不增删替换任何实义词、"
-    "根据语境自动添加标点和必要的连接词（如的、了、是、吗、呢）、"
-    "只输出最终句子。"
+    "你是手语识别结果整理助手。"
+    "输入是计算机视觉模型识别出的手势词汇序列，可能存在误识别。"
+    "请你根据语义常识判断每个词是否合理："
+    "如果某个词导致整句不通顺，用语境最匹配的词替换它；"
+    "如果词汇顺序不符合中文习惯，自行调整语序；"
+    "根据上下文补充必要的连接词和标点。"
+    "只输出最终句子，不要解释修改过程。"
 )
 
 
@@ -72,7 +75,7 @@ class Qwen2LoRAModel(TextTranslateModel):
             self.load()
 
         input_text = " ".join(words)
-        user_msg = f"以下是手语识别的乱序词汇，请重组为通顺句子：{input_text}"
+        user_msg = f"手语识别结果（注意：识别可能有个别错误）：{input_text}"
         messages = [
             {"role": "system", "content": _SYSTEM_PROMPT},
             {"role": "user", "content": user_msg},
@@ -95,7 +98,7 @@ class Qwen2LoRAModel(TextTranslateModel):
 
         input_text = " ".join(words)
         user_msg = (
-            f"以下是手语识别的乱序词汇，请重组为通顺句子：{input_text}\n"
+            f"手语识别结果（注意：识别可能有个别错误）：{input_text}\n"
             f"{emotion_context}"
         )
         messages = [

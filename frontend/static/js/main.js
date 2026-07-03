@@ -20,15 +20,10 @@
 
         btnCapture:     document.getElementById("btn-capture"),
         btnStop:        document.getElementById("btn-stop"),
-        btnRecognize:   document.getElementById("btn-recognize"),
         btnClear:       document.getElementById("btn-clear"),
-
-        genderCard:     document.getElementById("gender-card"),
-        genderDisplay:  document.getElementById("gender-display"),
 
         tokenList:      document.getElementById("token-list"),
         tokenCount:     document.getElementById("token-count"),
-
         sentPlace:      document.getElementById("sentence-placeholder"),
         errorFeedback:  document.getElementById("error-feedback"),
         errorMessage:   document.getElementById("error-message"),
@@ -67,9 +62,7 @@
     var STATE = {
         IDLE:             "idle",
         CAPTURING:        "capturing",
-        RECOGNIZING:      "recognizing",
         TRANSLATING:      "translating",
-        WAITING_CONFIRM:  "waiting_confirm",
         WAITING_GENERATE: "waiting_generate",
         GENERATING_AUDIO: "generating_audio",
         AUDIO_READY:      "audio_ready",
@@ -84,7 +77,6 @@
         updateUI();
         updateButtons();
         var badgeMap = {};
-        badgeMap[STATE.WAITING_CONFIRM]  = "已输出，请确认文本";
         badgeMap[STATE.WAITING_GENERATE] = "文本已确认";
         badgeMap[STATE.AUDIO_READY]      = "语音已生成";
         if (badgeMap[newState]) {
@@ -96,15 +88,14 @@
     }
 
     function updateUI() {
-        var loadingStates = [STATE.RECOGNIZING, STATE.TRANSLATING, STATE.GENERATING_AUDIO];
+        var loadingStates = [STATE.TRANSLATING, STATE.GENERATING_AUDIO];
         els.loadingOvl.style.display = loadingStates.indexOf(flowState) !== -1 ? "flex" : "none";
 
-        var isWaitingConfirm = flowState === STATE.WAITING_CONFIRM;
         var isWaitingGen     = flowState === STATE.WAITING_GENERATE;
         var isAudioReady     = flowState === STATE.AUDIO_READY;
 
-        els.sentPlace.style.display     = (!isWaitingConfirm && !isWaitingGen && !isAudioReady) ? "block" : "none";
-        els.transEditor.style.display   = isWaitingConfirm ? "block" : "none";
+        els.sentPlace.style.display     = (!isWaitingGen && !isAudioReady) ? "block" : "none";
+        els.transEditor.style.display   = "block";
         els.transConfirm.style.display  = (isWaitingGen || isAudioReady) ? "block" : "none";
         els.audioSection.style.display  = isAudioReady ? "block" : "none";
     }
@@ -135,10 +126,9 @@
     }
 
     function updateButtons() {
-        var isBusy = [STATE.RECOGNIZING, STATE.TRANSLATING, STATE.GENERATING_AUDIO].indexOf(flowState) !== -1;
+        var isBusy = [STATE.TRANSLATING, STATE.GENERATING_AUDIO].indexOf(flowState) !== -1;
         els.btnCapture.disabled   = !connected || isBusy || capturing;
         els.btnStop.disabled      = !connected || isBusy || !capturing;
-        els.btnRecognize.disabled = !connected || isBusy || !capturing;
         els.btnConfirm.disabled   = isBusy;
         els.btnGenerate.disabled  = isBusy || flowState !== STATE.WAITING_GENERATE;
         els.btnPlay.disabled      = isBusy || flowState !== STATE.AUDIO_READY;
@@ -271,12 +261,6 @@
                 drawDetectionOverlay(msg.data);
                 break;
 
-            case "tokens":
-                currentTokens = msg.data || [];
-                renderTokens(currentTokens);
-                log("识别到 " + msg.count + " 个词汇: " + currentTokens.join(", "));
-                break;
-
             case "guess_update":
                 updateSubtitle(msg.guess);
                 break;
@@ -309,18 +293,6 @@
                 els.transEditor.style.display = "block";
                 break;
 
-            case "gender_result":
-                showGender(msg.gender);
-                break;
-
-            case "translation_done":
-                var sentence = msg.data || "";
-                setFlowState(STATE.WAITING_CONFIRM);
-                els.transTextarea.value = sentence;
-                if (msg.gender) showGender(msg.gender);
-                log("翻译完成: " + sentence);
-                break;
-
             case "audio_ready":
                 currentHistoryId = msg.history_id;
                 currentDuration  = msg.duration_sec || 0;
@@ -336,7 +308,7 @@
                 log("错误 [" + msg.code + "]: " + msg.message, "error");
                 updateStatus("error", msg.message);
                 showError(msg.message);
-                if (flowState === STATE.RECOGNIZING || flowState === STATE.TRANSLATING) {
+                if (flowState === STATE.TRANSLATING) {
                     setFlowState(STATE.CAPTURING);
                 } else if (flowState === STATE.GENERATING_AUDIO) {
                     setFlowState(STATE.WAITING_GENERATE);
@@ -376,14 +348,6 @@
         updateStatus("idle", "已停止");
     }
 
-    function recognize() {
-        resetTranslationUI();
-        hideError();
-        setFlowState(STATE.RECOGNIZING);
-        updateStatus("recognizing", "正在识别手语...");
-        send("recognize");
-    }
-
     function confirmTranslate() {
         var text = els.transTextarea.value.trim();
         if (!text) { log("翻译文本不能为空", "error"); return; }
@@ -412,14 +376,6 @@
     // ==============================
     // 性别显示
     // ==============================
-
-    function showGender(gender) {
-        if (!els.genderCard || !els.genderDisplay) return;
-        els.genderCard.style.display = "block";
-        var icon = gender === "male" ? "♂️" : "♀️";
-        var label = gender === "male" ? "男" : "女";
-        els.genderDisplay.innerHTML = '<span class="gender-icon">' + icon + '</span> ' + label;
-    }
 
     function showError(message) {
         if (!els.errorFeedback || !els.errorMessage) return;
@@ -534,7 +490,6 @@
         currentHistoryId = null;
         currentDuration = 0;
         hideError();
-        if (els.genderCard) els.genderCard.style.display = "none";
         els.sentPlace.style.display    = "block";
         els.transEditor.style.display  = "none";
         els.transConfirm.style.display = "none";
@@ -634,7 +589,6 @@
 
     els.btnCapture.addEventListener("click", startCapture);
     els.btnStop.addEventListener("click", stopCapture);
-    els.btnRecognize.addEventListener("click", recognize);
     els.btnClear.addEventListener("click", clearResults);
     els.btnConfirm.addEventListener("click", confirmTranslate);
     els.btnGenerate.addEventListener("click", generateAudio);

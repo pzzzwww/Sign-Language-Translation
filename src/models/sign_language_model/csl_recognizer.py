@@ -291,8 +291,8 @@ class CSLRecognizer:
 
     # 自动确认：同一猜测持续 3 帧（~0.25s）不动 → 自动锁定
     AUTO_CONFIRM_FRAMES: int = 3
-    # 自动确认后冷却 10 帧（~0.8s），给手切换时间
-    AUTO_COOLDOWN_FRAMES: int = 10
+    # 自动确认后冷却 5 帧（~0.4s），给手切换时间
+    AUTO_COOLDOWN_FRAMES: int = 5
 
     # ------------------------------------------------------------------
     # 词汇表管理
