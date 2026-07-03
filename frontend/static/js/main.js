@@ -503,11 +503,7 @@
             var bx = bbox[0], by = bbox[1], bw = bbox[2], bh = bbox[3];
             var sx = bx * scaleX, sy = by * scaleY, sw = bw * scaleX, sh = bh * scaleY;
 
-            var color;
-            if (token && conf >= 0.7) { color = "#3fb950"; }
-            else if (token && conf >= 0.4) { color = "#d29922"; }
-            else if (conf >= 0.4) { color = "#d29922"; }
-            else { color = "#f85149"; }
+            var color = "#ff0000";
 
             ctx.strokeStyle = color;
             ctx.lineWidth = 2;
