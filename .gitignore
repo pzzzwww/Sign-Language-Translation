@@ -12,25 +12,18 @@ build/
 
 # 模型缓存（HuggingFace）
 src/models/cache/
-models/cache/
 
 # 训练产物
 **/checkpoint-*/
-*.bin
 optimizer.pt
 rng_state.pth
 scheduler.pt
 trainer_state.json
 
-# 大模型权重（首次运行时自动下载）
-src/models/sign_language_model/pretrained/hand_gesture_19/
-
 # 备份文件
 *.bak
-*.bak/
 
 # 音频输出
-*.wav
 audio/
 
 # 临时文件
@@ -39,21 +32,22 @@ tmp/
 *.swo
 
 # SSL 证书（自签名）
-key.pem
-cert.pem
+certs/
 
 # IDE
 .idea/
 
 # 数据
 data/
-.deps_installed
+
+# Claude Code 本地配置
+CLAUDE.md
+
+# 文档（不提交）
+docs/
 
 # ONNX 导出
 onnx/
 
 # 启动脚本（含私有域名）
 start_public.ps1
-
-# 测试输出
-test_results.txt

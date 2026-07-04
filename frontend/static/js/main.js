@@ -6,40 +6,46 @@
     "use strict";
 
     var els = {
-        videoFeed:      document.getElementById("video-feed"),
+        videoFeed:       document.getElementById("video-feed"),
         detectionCanvas: document.getElementById("detection-canvas"),
-        placeholder:    document.getElementById("placeholder"),
+        placeholder:     document.getElementById("placeholder"),
 
-        guessDisplay:   document.getElementById("guess-display"),
+        guessDisplay:    document.getElementById("guess-display"),
 
-        statusDot:      document.getElementById("status-dot"),
-        statusText:     document.getElementById("status-text"),
-        flowBadge:      document.getElementById("flow-badge"),
-        loadingOvl:     document.getElementById("loading-overlay"),
-        loadingText:    document.getElementById("loading-text"),
+        statusDot:       document.getElementById("status-dot"),
+        statusText:      document.getElementById("status-text"),
+        flowBadge:       document.getElementById("flow-badge"),
+        loadingOvl:      document.getElementById("loading-overlay"),
+        loadingText:     document.getElementById("loading-text"),
 
-        btnCapture:     document.getElementById("btn-capture"),
-        btnStop:        document.getElementById("btn-stop"),
-        btnClear:       document.getElementById("btn-clear"),
+        btnCapture:      document.getElementById("btn-capture"),
+        btnStop:         document.getElementById("btn-stop"),
+        btnClear:        document.getElementById("btn-clear"),
 
-        tokenList:      document.getElementById("token-list"),
-        tokenCount:     document.getElementById("token-count"),
-        sentPlace:      document.getElementById("sentence-placeholder"),
-        errorFeedback:  document.getElementById("error-feedback"),
-        errorMessage:   document.getElementById("error-message"),
-        transEditor:    document.getElementById("translate-editor"),
-        transTextarea:  document.getElementById("translate-textarea"),
-        btnConfirm:     document.getElementById("btn-confirm"),
-        transConfirm:   document.getElementById("translate-confirmed"),
-        confirmText:    document.getElementById("confirmed-text"),
-        btnGenerate:    document.getElementById("btn-generate"),
-        audioSection:   document.getElementById("audio-player-section"),
-        btnPlay:        document.getElementById("btn-play"),
-        audioDuration:  document.getElementById("audio-duration"),
+        tokenList:       document.getElementById("token-list"),
+        tokenCount:      document.getElementById("token-count"),
+        sentPlace:       document.getElementById("sentence-placeholder"),
+        errorFeedback:   document.getElementById("error-feedback"),
+        errorMessage:    document.getElementById("error-message"),
+        transEditor:     document.getElementById("translate-editor"),
+        transTextarea:   document.getElementById("translate-textarea"),
+        btnConfirm:      document.getElementById("btn-confirm"),
+        transConfirm:    document.getElementById("translate-confirmed"),
+        confirmText:     document.getElementById("confirmed-text"),
+        btnGenerate:     document.getElementById("btn-generate"),
+        audioSection:    document.getElementById("audio-player-section"),
+        btnPlay:         document.getElementById("btn-play"),
+        audioDuration:   document.getElementById("audio-duration"),
 
-        logArea:        document.getElementById("log-area"),
-        historyList:    document.getElementById("history-list"),
-        btnRefreshHist: document.getElementById("btn-refresh-history"),
+        largeOverlay:    document.getElementById("large-text-overlay"),
+        largeContent:    document.getElementById("large-text-content"),
+        btnLargeClose:   document.getElementById("btn-large-close"),
+        btnLargeEditor:  document.getElementById("btn-large-editor"),
+        btnLargeText:    document.getElementById("btn-large-text"),
+
+        logArea:         document.getElementById("log-area"),
+        historyList:     document.getElementById("history-list"),
+        btnRefreshHist:  document.getElementById("btn-refresh-history"),
     };
 
     var ws = null;
@@ -373,6 +379,17 @@
         });
     }
 
+    function showLargeText() {
+        var text = els.confirmText.textContent || els.transTextarea.value;
+        if (!text.trim()) return;
+        els.largeContent.textContent = text;
+        els.largeOverlay.style.display = "flex";
+    }
+
+    function hideLargeText() {
+        els.largeOverlay.style.display = "none";
+    }
+
     // ==============================
     // 性别显示
     // ==============================
@@ -594,6 +611,9 @@
     els.btnGenerate.addEventListener("click", generateAudio);
     els.btnPlay.addEventListener("click", playAudio);
     els.btnRefreshHist.addEventListener("click", loadHistory);
+    els.btnLargeEditor && els.btnLargeEditor.addEventListener("click", showLargeText);
+    els.btnLargeText && els.btnLargeText.addEventListener("click", showLargeText);
+    els.btnLargeClose && els.btnLargeClose.addEventListener("click", hideLargeText);
 
     // ==============================
     // 启动

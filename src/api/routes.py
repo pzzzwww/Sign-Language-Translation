@@ -69,7 +69,7 @@ async def status():
             "loaded": slm.is_loaded(),
         },
         "text_translate_model": {
-            "type": "Qwen2LoRAModel" if TRANSLATION_MODE == "qwen" else "MockTranslateModel",
+            "type": "Qwen2TranslateModel" if TRANSLATION_MODE == "qwen" else "MockTranslateModel",
             "loaded": TranslateService._instance is not None and TranslateService._instance.is_loaded(),
             "mode": TranslateService._mode or "未触发（首次翻译时自动加载）",
         },

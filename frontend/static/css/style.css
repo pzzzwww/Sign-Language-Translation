@@ -167,19 +167,6 @@ h1 {
 
 .subtitle-card { padding: 10px 16px; min-height: 44px; display: none; }
 
-/* ============================
-   检测图例
-   ============================ */
-
-.detection-legend {
-    display: flex;
-    gap: 16px;
-    justify-content: center;
-    padding: 2px 0;
-    font-size: 11px;
-    color: #484f58;
-    opacity: 0.9;
-}
 
 /* ============================
    性别显示

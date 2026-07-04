@@ -5,14 +5,27 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "sl-translator"
 version = "0.4.0"
-description = "基于 Transformer 的手语识别生成语音系统"
+description = "实时手语识别与语音合成系统"
 requires-python = ">=3.10"
 readme = "README.md"
+license = {text = "MIT"}
+keywords = ["sign-language", "transformer", "pytorch", "mediapipe", "tts"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Multimedia :: Video :: Capture",
+]
 
 [project.scripts]
 sl-collect = "scripts.collect_data:main"
 sl-train = "scripts.train_csl:main"
-sl-serve = "src.backend.main:app"
+sl-serve = "src.backend.main:main"
 
 [tool.setuptools.packages.find]
 where = ["."]

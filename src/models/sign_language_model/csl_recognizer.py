@@ -149,30 +149,23 @@ class CSLTransformer(nn.Module):
         )
 
     def forward(self, x: "torch.Tensor") -> "torch.Tensor":
-        """前向传播（模型推理的一趟完整流程）。
-
-        Args:
-            x: (B, T, D)
-               B = batch_size 批次大小
-               T = sequence_length 帧数
-               D = input_dim 每帧特征维度
-
-        Returns:
-            (B, num_classes) 未归一化的分类分数（logits），softmax 后变概率
+        """  入参 x
+             形状 (B, T, D) 的张量
+             B (batch_size)：一次喂入多少条序列（比如同时识别 32 段手语）
+             T (sequence_length)：每条序列有多少帧（比如每段手语 60 帧）
+             D (input_dim)：每帧的特征维度（比如 126 维手部关键点，或 768 维 ViT 特征）
         """
-        x = self.input_proj(x)                    # (B, T, d_model)  线性映射
-        x = self.pos_encoding(x)                  # 注入位置信息
-        x = self.encoder(x)                       # 自注意力时序建模
+        x = self.input_proj(x)  # (B, T, d_model)  线性映射
+        x = self.pos_encoding(x)  # 注入位置信息
+        x = self.encoder(x)  # 自注意力时序建模
         # 池化：把变长序列 (B,T,d) 压缩为 (B,d*2)
         # 【知识点：torch.cat】沿指定维度拼接两个张量
         x = torch.cat([x.mean(dim=1), x.max(dim=1).values], dim=1)
-        return self.classifier(x)                 # Softmax 在外层调用
+        return self.classifier(x)  # 输入一批手语帧序列，输出每条序列属于各个手势类别的原始分数。返回分数矩阵
 
 
-# ======================================================================
+
 # 词汇表
-# ======================================================================
-
 # 默认中文手语词汇表（可扩展，训练时会被替换）
 DEFAULT_CSL_VOCABULARY = [
     # ★ 常用手势（启发式模式核心，按优先级排序）
@@ -210,10 +203,8 @@ NO_GESTURE_LABEL = "<no_gesture>"
 UNKNOWN_LABEL = "<unknown>"
 
 
-# ======================================================================
-# CSL 识别器（封装推理逻辑）
-# ======================================================================
 
+# CSL 识别器（封装推理逻辑）
 class CSLRecognizer:
     """【知识点：CSL 识别器 — 推理管线的封装】
 
@@ -247,8 +238,6 @@ class CSLRecognizer:
         stability_threshold: int = 2,
         cooldown_frames: int = 15,
         device: str = "cpu",
-        use_vit: bool = False,
-        vit_dim: int = 768,
     ) -> None:
         self._model_path = Path(model_path) if model_path else None
         self._num_classes = num_classes
@@ -256,12 +245,8 @@ class CSLRecognizer:
         self._stability_threshold = stability_threshold
         self._cooldown_frames = cooldown_frames
         self._device = device
-        self._use_vit = use_vit
-        self._vit_dim = vit_dim
 
-        # 输入维度: 双手关键点 (126=左手63+右手63) + 可选 ViT 特征 (768)
-        self._base_dim = CSL_INPUT_DIM
-        self._input_dim = self._base_dim + vit_dim if use_vit else self._base_dim
+        self._input_dim = CSL_INPUT_DIM
 
         self._model: nn.Module | None = None
         self._loaded = False
@@ -452,8 +437,6 @@ class CSLRecognizer:
     def model_type(self) -> str:
         """返回当前识别模式描述。"""
         mode = "Transformer Encoder (训练权重)" if self._model is not None else "启发式规则 (距离比值法数字分类)"
-        if self._use_vit:
-            mode += " + ViT-B/16 视觉特征"
         return mode
 
     @property
@@ -483,47 +466,28 @@ class CSLRecognizer:
     # 逐帧分类
     # ------------------------------------------------------------------
 
-    def classify_frame(
-        self,
-        landmarks: np.ndarray,
-        confidence_hint: float = 0.5,
-        vit_features: np.ndarray | None = None,
-    ) -> str | None:
+    def classify_frame(self,landmarks: np.ndarray) -> str | None:
         """
-        对单帧关键点进行分类。
-
-        Args:
-            landmarks: (63,) 扁平化关键点或多帧 (T, 63)
-            confidence_hint: MediaPipe 检测置信度（用于稳定性判断）
-            vit_features: 可选，(768,) ViT-B/16 视觉特征向量，启用时与关键点拼接
-
-        Returns:
-            识别到的 Token 字符串，无稳定结果时返回 None
+        一帧 126 维进来 → 经过七道关卡 → 要么返回 None，要么返回确认的 token。
+        七道关：缓冲区够不够 → 推理有没有结果 → 标签在不在词表内 → 同一标签连续 2 帧 → 不在冷却期 → 同一猜测累计 3 帧 →不被黑名单过滤。
+        全过的才进 token 列表。大部分调用死在前面几道，返回 None。
         """
         self._frame_count += 1
-
-        if self._use_vit and vit_features is not None:
-            feature = np.concatenate([landmarks, vit_features])
-        else:
-            feature = landmarks
-
+        feature = landmarks
         # 将特征加入序列缓冲区
         if feature.ndim == 2:
             for f in feature:
                 self._sequence_buffer.append(f)
         else:
             self._sequence_buffer.append(feature)
-
         # 限制缓冲区大小
         while len(self._sequence_buffer) > self.SEQUENCE_LENGTH:
             self._sequence_buffer.pop(0)
-
         # ★ 识别启动：少量帧即可开始猜测，确认需要持续稳定性
         min_frames = (
             self.HEURISTIC_MIN_FRAMES if self._model is None
             else max(4, self.SEQUENCE_LENGTH // 4)  # 4帧即可开始猜测
         )
-
         if len(self._sequence_buffer) < min_frames:
             if self._frame_count % 10 == 0:
                 logger.debug(
@@ -617,9 +581,8 @@ class CSLRecognizer:
     def _infer(self) -> tuple[int | None, float]:
         """
         执行模型推理。
-
-        Returns:
-            (label_id, confidence) 或 (None, 0.0)
+        拿缓冲区最近 12 帧 → 拼成 (1, 12, 126) → 进模型 → softmax 变概率 → 取概率最高的那个。回 classify_frame()
+        模型不存在时切启发式规则。
         """
         if self._model is None or not _TORCH_AVAILABLE:
             return self._heuristic_infer()

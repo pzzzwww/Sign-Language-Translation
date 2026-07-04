@@ -1,0 +1,38 @@
+# 手语识别生成语音系统 — 核心依赖
+# Python >= 3.10
+# 安装方式：pip install -r requirements.txt
+#
+# 注意：PyTorch 建议根据显卡手动安装对应 CUDA 版本
+# https://pytorch.org/get-started/locally/
+
+# ---- 深度学习框架 ----
+torch>=2.0.0
+numpy>=1.24.0,<3.0.0
+
+# ---- HuggingFace 生态 ----
+transformers>=4.30.0,<6.0.0
+
+# ---- 手部关键点检测 ----
+mediapipe>=0.10.0,<1.0.0
+
+# ---- 音视频处理 ----
+opencv-python>=4.8.0,<5.0.0
+pillow>=10.0.0,<13.0.0
+
+# ---- 语音合成（TTS） ----
+pyttsx3>=2.90
+
+# ---- Web 框架 ----
+fastapi>=0.100.0
+uvicorn[standard]>=0.23.0
+requests>=2.28.0
+
+# ---- 可选：Gradio 演示 ----
+# gradio>=4.0.0,<6.0.0
+
+# ---- 可选：ONNX 模型导出与加速 ----
+# onnx>=1.14.0
+# onnxruntime>=1.15.0
+
+# ---- 可选：CosyVoice2 TTS ----
+# 安装方式：git clone https://github.com/FunAudioLLM/CosyVoice && cd CosyVoice && pip install -e .

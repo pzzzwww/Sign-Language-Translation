@@ -1,19 +1,15 @@
 """
-手语词汇→自然语句翻译服务。
+整个文件做一件事：把手语 Token 列表变成自然中文句子，且模型只加载一次。
 
 支持三种模式（由 config.TRANSLATION_MODE 控制）：
-  - "qwen":  使用 Qwen2-0.5B（加载失败则抛异常）
+  - "qwen":  默认。使用 Qwen2-0.5B（加载失败则抛异常）
   - "mock":  使用 MockTranslateModel（零依赖，无需模型，始终安全）
-  - "auto":  默认。安全优先：直接使用 MockTranslateModel。
-             如需启用 Qwen2，请设置 TRANSLATION_MODE=qwen。
+  - "auto":  安全优先：直接使用 MockTranslateModel。
 """
 
 from __future__ import annotations
-
 import logging
-from pathlib import Path
 from typing import Optional
-
 from src.interfaces import TextTranslateModel
 from src.models.text_model import MockTranslateModel
 from src.config import TRANSLATION_MODE
@@ -26,20 +22,15 @@ class TranslateService:
     手语词汇→自然语句翻译服务。
 
     懒加载模型，首次 translate() 调用时自动初始化。
-    默认使用 MockTranslateModel（零内存占用，不崩溃）。
-    如需加载 Qwen2-0.5B，设置 TRANSLATION_MODE=qwen。
+    默认使用 Qwen2-0.5B（TRANSLATION_MODE=qwen）。
+    如需切换为零依赖模式，设置 TRANSLATION_MODE=mock。
     """
 
     _instance: Optional[TextTranslateModel] = None
     _mode: str = ""
 
-    # 是否使用 LoRA 微调权重（仅 qwen 模式有效）
-    use_lora: bool = True
 
-    # ------------------------------------------------------------------
     # 模型管理
-    # ------------------------------------------------------------------
-
     @classmethod
     def _get_model(cls) -> TextTranslateModel:
         if cls._instance is not None:
@@ -63,19 +54,15 @@ class TranslateService:
     @classmethod
     def _load_qwen_or_raise(cls) -> TextTranslateModel:
         """加载 Qwen2-0.5B。失败时向上抛异常（不降级）。"""
-        from src.config import LORA_PATH
-        from src.models.text_model import Qwen2LoRAModel
-
         from src.config import TEXT_MODEL_NAME
-        lora_path = str(LORA_PATH) if cls.use_lora and LORA_PATH.exists() else None
-        model = Qwen2LoRAModel(model_path=TEXT_MODEL_NAME, lora_path=lora_path)
-        model.load()  # 可能 SegFault — 用户选择 qwen 模式即接受此风险
+        from src.models.text_model import Qwen2TranslateModel
+
+        model = Qwen2TranslateModel(model_path=TEXT_MODEL_NAME)
+        model.load()
         return model
 
-    # ------------------------------------------------------------------
-    # 翻译接口
-    # ------------------------------------------------------------------
 
+    #翻译接口
     def translate(self, words: list[str]) -> str:
         if not words:
             raise ValueError("翻译词汇列表不能为空")

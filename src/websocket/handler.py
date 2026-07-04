@@ -48,7 +48,6 @@ class StreamHandler:
             confidence_threshold=0.35,
             stability_threshold=2,
             cooldown_frames=8,
-            use_vit=False,
         )
     #入口
     async def handle(self, ws: WebSocket) -> None:#同意连接，把模型加载好，通知前端"我准备好了"，客户端每发来一帧，处理一帧
@@ -162,10 +161,8 @@ class StreamHandler:
         await self._send(ws, type="detection", data=[])
         await self._send(ws, type="status", state="idle", message="已停止")
 
-    # ------------------------------------------------------------------
-    # 处理客户端发来的帧
-    # ------------------------------------------------------------------
 
+    #处理客户端发来的帧
     async def _process_frame(self, ws: WebSocket, data: str) -> None:
         """
         客户端发来的：一帧=字符串
@@ -230,11 +227,10 @@ class StreamHandler:
             run_classify = (self._classify_interval <= 1) or (self._frame_idx % self._classify_interval == 1)
             if run_classify and hands_data:
                 feature = build_hands_feature(hands_data)
-                avg_conf = np.mean([h["confidence"] for h in hands_data])
 
                 await loop.run_in_executor(
                     None, self._recognizer.classify_frame,
-                    feature, avg_conf,
+                    feature,
                 )
 
             # ---- 3. 实时猜测推送给前端 ----
@@ -262,13 +258,11 @@ class StreamHandler:
         except Exception:
             _log.exception("process_frame 异常")
 
-    # ------------------------------------------------------------------
-    # 自动翻译（后台，不阻塞帧处理）
-    # ------------------------------------------------------------------
 
-    async def _try_auto_translate(self, ws: WebSocket) -> None:
+    # 自动翻译（后台，不阻塞帧处理）
+    async def _try_auto_translate(self, ws: WebSocket) -> None:#入参:FastAPI的WebSocket连接对象，用于向这个客户端推送消息
         """Token 列表变化时自动连词成句，推送给前端。"""
-        tokens = list(self._current_tokens)
+        tokens = list(self._current_tokens)#取Token列表，把当前累积的Token复制出来
         if not tokens:
             return
         snapshot = ",".join(tokens)
@@ -279,9 +273,8 @@ class StreamHandler:
         try:
             sentence = await loop.run_in_executor(
                 None, self.translate.translate, tokens,
-            )
-            await self._send(ws, type="auto_translate", data=sentence,
-                             tokens=tokens, count=len(tokens))
+            )#把翻译任务丢到线程池执行，翻译结果，推送给前端
+            await self._send(ws, type="auto_translate", data=sentence,tokens=tokens, count=len(tokens))
         except Exception:
             pass
 

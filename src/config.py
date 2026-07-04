@@ -23,15 +23,12 @@ MODEL_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 import os
 os.environ["HF_HOME"] = str(MODEL_CACHE_DIR)
 os.environ["HF_HUB_CACHE"] = str(MODEL_CACHE_DIR / "hub")
-# 国内用户使用 hf-mirror.com 镜像，避免下载超时
-# 可通过 HF_ENDPOINT 环境变量覆盖，设为空字符串则走官方源
-os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
-# 离线模式：仅使用本地缓存。通过 HF_HUB_OFFLINE 环境变量控制
-# 设为 0 或 false 可恢复在线下载（服务器首次部署需要）
-os.environ.setdefault("HF_HUB_OFFLINE", "1")
+# 国内用户可设置 HF_ENDPOINT=https://hf-mirror.com 加速下载
+# os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
+# 离线模式：仅使用本地缓存。设置 HF_HUB_OFFLINE=1 可跳过在线检查
+# os.environ.setdefault("HF_HUB_OFFLINE", "1")
 
 # ---- 模型路径 ----
-LORA_PATH = SRC / "models" / "text_model" / "lora_word2sent"
 # Qwen2-0.5B 本地缓存路径，避免每次启动尝试连接 HuggingFace
 _TEXT_MODEL_SNAPSHOT = (
     MODEL_CACHE_DIR / "hub" / "models--Qwen--Qwen2-0.5B-Instruct"
@@ -50,8 +47,6 @@ FRAME_BUFFER_SIZE = 60
 # ---- 手语识别 ----
 # 【知识点：自动识别 vs 手动触发】每隔 N 秒自动识别一次，0 = 禁用（仅手动按钮触发）
 SIGN_AUTO_INTERVAL = 3.0
-SIGN_MODEL_PATH = SRC / "models" / "sign_language_model" / "pretrained" / "hand_gesture_19"
-
 CSL_MODEL_PATH = SRC / "models" / "sign_language_model" / "pretrained" / "csl_model.pt"
 CSL_VOCABULARY_PATH = SRC / "models" / "sign_language_model" / "pretrained" / "csl_vocabulary.json"
 # 【知识点：特征维度】每手 21 个关键点 × 3 坐标(x,y,z) = 63 维，双手 ×2 = 126 维
@@ -99,12 +94,6 @@ TRANSLATION_MODE: str = "qwen"
 # ---- 音频 ----
 AUDIO_DIR = ROOT / "audio"
 AUDIO_DIR.mkdir(exist_ok=True)
-
-# ---- ViT 视觉特征提取 ----
-# 【知识点：Vision Transformer (ViT)】将图像切成 16×16 patch，用 Transformer 编码
-# USE_VIT=False 时只用 MediaPipe 关键点（126维）
-# USE_VIT=True  时拼接 ViT 视觉特征（126+768=894维），多模态融合
-USE_VIT: bool = False  # 默认关闭，首次启用需下载 ~330MB 权重
 
 # ---- Token 相邻黑名单 ----
 # (前一个词, 后一个词) 禁止相邻出现，过滤不合逻辑的识别结果

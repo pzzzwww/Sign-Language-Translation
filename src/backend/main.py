@@ -88,7 +88,8 @@ async def index():
 # 启动入口
 # ------------------------------------------------------------------
 
-if __name__ == "__main__":
+def main() -> None:
+    """CLI 入口：启动 FastAPI 服务。"""
     import os
     import uvicorn
     from src.config import HOST, PORT, SSL_KEYFILE, SSL_CERTFILE
@@ -110,3 +111,7 @@ if __name__ == "__main__":
         print(f"{'='*60}\n")
         uvicorn.run(app, host=HOST, port=PORT, log_level="info",
                     ssl_keyfile=str(SSL_KEYFILE), ssl_certfile=str(SSL_CERTFILE))
+
+
+if __name__ == "__main__":
+    main()
