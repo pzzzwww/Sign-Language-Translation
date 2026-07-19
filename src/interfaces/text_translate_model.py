@@ -27,12 +27,6 @@ class TextTranslateModel(ABC):
     def translate(self, words: list[str]) -> str:
         """将乱序手语词汇重组为自然中文句子。"""
 
-    def translate_with_emotion(self, words: list[str], emotion_context: str) -> str:
-        """带情感上下文的翻译（默认回退到普通 translate）。
-
-        子类可重写以注入情感上下文改进翻译质量。"""
-        return self.translate(words)
-
     @abstractmethod
     def unload(self) -> None:
         """释放模型占用的内存/显存资源。"""

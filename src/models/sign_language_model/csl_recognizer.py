@@ -283,15 +283,6 @@ class CSLRecognizer:
     # 词汇表管理
     # ------------------------------------------------------------------
 
-    @property
-    def vocabulary(self) -> list[str]:
-        return self._vocabulary
-
-    def set_vocabulary(self, vocab: list[str]) -> None:
-        """设置词汇表（训练后替换默认词汇表）。"""
-        self._vocabulary = vocab
-        self._num_classes = len(vocab)
-
     def _load_vocabulary_from_file(self) -> None:
         """从训练时保存的词汇表文件加载自定义词汇表。"""
         from src.config import CSL_VOCABULARY_PATH
@@ -793,19 +784,6 @@ class CSLRecognizer:
             return True
         return False
 
-    def compose_sentence(self) -> str:
-        """将已确认的 Token 拼接为待翻译的词语列表。"""
-        return " ".join(self._tokens)
-
-    def token_info(self) -> dict:
-        """返回当前状态：猜测 + 已确认 Token 列表。"""
-        progress = min(1.0, self._guess_stable_count / self.AUTO_CONFIRM_FRAMES) if self._current_guess else 0
-        return {
-            "guess": self._current_guess,
-            "tokens": [{"index": i, "text": t} for i, t in enumerate(self._tokens)],
-            "auto_progress": progress,  # 0~1，前端可显示确认进度条
-        }
-
     def clear(self) -> None:
         """清空所有状态。"""
         self._sequence_buffer.clear()
@@ -816,19 +794,3 @@ class CSLRecognizer:
         self._auto_cooldown = 0
         self._tokens.clear()
         self._frame_count = 0
-
-    # ------------------------------------------------------------------
-    # 序列保存/加载（用于训练数据收集）
-    # ------------------------------------------------------------------
-
-    def save_landmark_sequence(self, path: str | Path) -> None:
-        """保存当前关键点序列缓冲区到文件（用于训练数据收集）。"""
-        if not self._sequence_buffer:
-            return
-        data = np.stack(self._sequence_buffer)
-        np.save(str(path), data)
-        logger.info("关键点序列已保存到 %s (%d 帧)", path, data.shape[0])
-
-    def load_landmark_sequence(self, path: str | Path) -> np.ndarray:
-        """从文件加载关键点序列。"""
-        return np.load(str(path))

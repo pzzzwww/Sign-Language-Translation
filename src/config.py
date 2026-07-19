@@ -9,6 +9,7 @@
   - 配置常量命名约定：全大写 + 下划线（如 CAMERA_FPS）
 """
 from pathlib import Path
+import os
 
 # 【知识点：__file__】config.py 在 src/ 下，parent.parent 回到项目根目录
 ROOT = Path(__file__).parent.parent
@@ -20,7 +21,6 @@ SRC = ROOT / "src"
 MODEL_CACHE_DIR = SRC / "models" / "cache"
 MODEL_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
-import os
 os.environ["HF_HOME"] = str(MODEL_CACHE_DIR)
 os.environ["HF_HUB_CACHE"] = str(MODEL_CACHE_DIR / "hub")
 # 国内用户可设置 HF_ENDPOINT=https://hf-mirror.com 加速下载
@@ -67,7 +67,6 @@ CSL_COOLDOWN_FRAMES = 30           # 输出后冷却30帧，防止重复输出
 
 # ---- 语音合成 (TTS) ----
 # 【知识点：pyttsx3】离线 TTS 引擎，调用操作系统内置语音（Windows SAPI5 / macOS NSSpeech）
-TTS_VOICE_ID = 0       # 0=中文语音(Huihui), 1=英文语音(Zira)
 TTS_RATE = 200         # 语速，默认200词/分钟
 
 # ---- 服务器 ----

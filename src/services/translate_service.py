@@ -69,6 +69,14 @@ class TranslateService:
         model = self._get_model()
         return model.translate(words)
 
+    def warmup(self) -> None:
+        """预加载模型（启动时调用，避免首次请求等待）。"""
+        self._get_model()
+
+    def is_loaded(self) -> bool:
+        """翻译模型是否已加载就绪。"""
+        return self._instance is not None and self._instance.is_loaded()
+
     def unload(self) -> None:
         """释放模型资源。"""
         if TranslateService._instance is not None:

@@ -131,8 +131,6 @@ class RealSignLanguageModel(SignLanguageModel):
         recognizer = self._recognizer
         recognizer.clear()
 
-        tokens: list[str] = []
-
         for frame_path in frames:
             image = cv2.imread(str(frame_path))
             if image is None:
@@ -144,13 +142,7 @@ class RealSignLanguageModel(SignLanguageModel):
 
             # 双手拼接特征
             feature = build_hands_feature(hands_data)
-
-            token = recognizer.classify_frame(
-                feature,
-                confidence_hint=hands_data[0]["confidence"] if hands_data else 0.0,
-            )
-            if token:
-                tokens.append(token)
+            recognizer.classify_frame(feature)
 
         all_tokens = recognizer.get_tokens()
         return list(dict.fromkeys(all_tokens))
@@ -195,12 +187,8 @@ class RealSignLanguageModel(SignLanguageModel):
 
         # 双手拼接为 126 维，单手时缺失手填零
         feature = build_hands_feature(hands_data)
-        avg_conf = np.mean([h["confidence"] for h in hands_data])
 
-        token = self._recognizer.classify_frame(
-            feature,
-            confidence_hint=avg_conf,
-        )
+        token = self._recognizer.classify_frame(feature)
 
         # 将识别到的 token 绑定到每只检测到的手（前端显示用）
         for hand in hands_data:
@@ -214,11 +202,6 @@ class RealSignLanguageModel(SignLanguageModel):
             "tokens": new_tokens,
             "all_tokens": self._recognizer.get_tokens(),
         }
-
-    def get_all_tokens(self) -> list[str]:
-        if self._recognizer is None:
-            return []
-        return self._recognizer.get_tokens()
 
     def reset_session(self) -> None:
         if self._detector is not None:
@@ -243,10 +226,4 @@ class RealSignLanguageModel(SignLanguageModel):
     def detector(self) -> MediaPipeHandDetector | None:
         return self._detector
 
-    @property
-    def recognizer(self) -> CSLRecognizer | None:
-        return self._recognizer
 
-    @property
-    def using_vit(self) -> bool:
-        return False

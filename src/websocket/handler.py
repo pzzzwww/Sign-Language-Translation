@@ -36,8 +36,6 @@ class StreamHandler:
         self._current_gender: str = "female"
         # 跳帧优化 + 自动翻译
         self._frame_idx = 0
-        self._detect_interval = 1       # 每帧跑 MediaPipe 检测
-        self._classify_interval = 1     # 每帧跑 CSL 分类
         self._last_hands: list[dict] = []
         self._last_token_count = 0       # 跟踪 recognizer 已确认 token 数量
         self._last_tokens_snapshot = ""  # 自动翻译去重
@@ -61,7 +59,7 @@ class StreamHandler:
 
         try:
             loop = asyncio.get_event_loop()
-            model = self._sign._model
+            model = self._sign.model
             if not model.is_loaded():
                 await self._send(ws, type="status", state="loading_model",
                                  message="正在加载手语识别模型...")
@@ -144,8 +142,7 @@ class StreamHandler:
         self._last_tokens_snapshot = ""
         self._recognizer.clear()
 
-        if hasattr(self._sign._model, 'reset_session'):
-            self._sign._model.reset_session()
+        self._sign.reset_session()
 
         await self._send(ws, type="status", state="capturing",
                          message="摄像头已启动，正在实时采集...")
@@ -192,42 +189,36 @@ class StreamHandler:
             if frame is None:
                 return
 
-            detector = self._sign._model.detector
+            detector = self._sign.model.detector
             if detector is None:
                 return
 
-            # ---- 1. MediaPipe 手部检测（跳帧）----
-            run_detect = (self._detect_interval <= 1) or (self._frame_idx % self._detect_interval == 1)
-            if run_detect:
-                hands_data = await loop.run_in_executor(None, detector.detect, frame)
-                self._last_hands = hands_data
+            # ---- 1. MediaPipe 手部检测 ----
+            hands_data = await loop.run_in_executor(None, detector.detect, frame)
+            self._last_hands = hands_data
 
-                # 构建检测数据发给前端
-                detection_payload = []
-                for hand in hands_data:
-                    item = {
-                        "bbox": list(hand["bbox"]),
-                        "handedness": hand.get("handedness", "Unknown"),
-                        "confidence": float(hand.get("confidence", 0)),
-                        "token": None,
-                    }
-                    if "landmarks_pixel" in hand:
-                        lm = hand["landmarks_pixel"]
-                        if hasattr(lm, "tolist"):
-                            item["landmarks"] = lm.tolist()
-                        else:
-                            item["landmarks"] = [[float(p[0]), float(p[1])] for p in lm]
-                    item["landmarks_count"] = len(item.get("landmarks", []))
-                    detection_payload.append(item)
-                await self._send(ws, type="detection", data=detection_payload)
-            else:
-                hands_data = self._last_hands
+            # 构建检测数据发给前端
+            detection_payload = []
+            for hand in hands_data:
+                item = {
+                    "bbox": list(hand["bbox"]),
+                    "handedness": hand.get("handedness", "Unknown"),
+                    "confidence": float(hand.get("confidence", 0)),
+                    "token": None,
+                }
+                if "landmarks_pixel" in hand:
+                    lm = hand["landmarks_pixel"]
+                    if hasattr(lm, "tolist"):
+                        item["landmarks"] = lm.tolist()
+                    else:
+                        item["landmarks"] = [[float(p[0]), float(p[1])] for p in lm]
+                item["landmarks_count"] = len(item.get("landmarks", []))
+                detection_payload.append(item)
+            await self._send(ws, type="detection", data=detection_payload)
 
-            # ---- 2. CSL 手语分类（跳帧 + 运动检测）----
-            run_classify = (self._classify_interval <= 1) or (self._frame_idx % self._classify_interval == 1)
-            if run_classify and hands_data:
+            # ---- 2. CSL 手语分类 ----
+            if hands_data:
                 feature = build_hands_feature(hands_data)
-
                 await loop.run_in_executor(
                     None, self._recognizer.classify_frame,
                     feature,
@@ -373,5 +364,4 @@ class StreamHandler:
     async def _cleanup(self) -> None:
         self._running = False
         self._recognizer.clear()
-        if hasattr(self._sign._model, 'reset_session'):
-            self._sign._model.reset_session()
+        self._sign.reset_session()

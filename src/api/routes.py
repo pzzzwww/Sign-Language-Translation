@@ -12,7 +12,7 @@ from fastapi import APIRouter, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 
-from src.models import get_sign_language_model, get_text_translate_model
+from src.models import get_sign_language_model
 from src.services.sign_service import SignService
 from src.services.translate_service import TranslateService
 from src.services.speech_service import SpeechService
@@ -43,11 +43,7 @@ class TTSRequest(BaseModel):
     text: str
     gender: str = "female"
 
-class VideoResultSaveRequest(BaseModel):
-    tokens: list[str]
-    text: str
-
-class ConfirmVideoRequest(BaseModel):
+class VideoConfirmRequest(BaseModel):
     tokens: list[str]
     text: str
 
@@ -63,6 +59,7 @@ async def health():
 @router.get("/status")
 async def status():
     slm = get_sign_language_model()
+    translate_svc = TranslateService()
     return {
         "sign_language_model": {
             "type": type(slm).__name__,
@@ -70,8 +67,8 @@ async def status():
         },
         "text_translate_model": {
             "type": "Qwen2TranslateModel" if TRANSLATION_MODE == "qwen" else "MockTranslateModel",
-            "loaded": TranslateService._instance is not None and TranslateService._instance.is_loaded(),
-            "mode": TranslateService._mode or "未触发（首次翻译时自动加载）",
+            "loaded": translate_svc.is_loaded(),
+            "mode": translate_svc.current_mode,
         },
     }
 
@@ -155,7 +152,7 @@ async def process_video(file: UploadFile = File(...)):
 # ------------------------------------------------------------------
 
 @router.post("/save-video-result")
-async def save_video_result(req: VideoResultSaveRequest):
+async def save_video_result(req: VideoConfirmRequest):
     """保存视频翻译结果到历史记录。"""
     if not req.text.strip():
         raise HTTPException(status_code=400, detail="text 不能为空")
@@ -166,7 +163,7 @@ async def save_video_result(req: VideoResultSaveRequest):
     return {"history_id": record_id, "text": req.text}
 
 @router.post("/confirm-video")
-async def confirm_video(req: ConfirmVideoRequest):
+async def confirm_video(req: VideoConfirmRequest):
     """统一确认：保存翻译结果 + 生成语音 + 返回完整记录。"""
     if not req.text.strip():
         raise HTTPException(status_code=400, detail="text 不能为空")

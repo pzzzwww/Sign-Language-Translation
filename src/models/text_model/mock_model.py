@@ -17,6 +17,7 @@ from typing import Optional
 from src.interfaces import TextTranslateModel
 
 # Token → 中文文本映射表
+# 仅保留非恒等映射；未列出的词在 translate() 中直接透传
 _TOKEN_MAP: dict[str, str] = {
     # 数字手势（手语数字 1-5）
     "1": "数字一",
@@ -40,67 +41,6 @@ _TOKEN_MAP: dict[str, str] = {
     "Token013": "是不是",
     "Token014": "在",
     "Token015": "哪里",
-    # 常见手语词汇（用于流水线联调）
-    "你": "你",
-    "我": "我",
-    "他": "他",
-    "好": "好",
-    "是": "是",
-    "有": "有",
-    "要": "要",
-    "想": "想",
-    "能": "能",
-    "会": "会",
-    "可以": "可以",
-    "喜欢": "喜欢",
-    "爱": "爱",
-    "知道": "知道",
-    "说": "说",
-    "看": "看",
-    "听": "听",
-    "吃": "吃",
-    "喝": "喝",
-    "去": "去",
-    "来": "来",
-    "走": "走",
-    "手机": "手机",
-    "电脑": "电脑",
-    "电视": "电视",
-    "问题": "问题",
-    "东西": "东西",
-    "名字": "名字",
-    "地方": "地方",
-    "时间": "时间",
-    "今天": "今天",
-    "明天": "明天",
-    "昨天": "昨天",
-    "请": "请",
-    "帮助": "帮助",
-    "谢谢": "谢谢",
-    "对不起": "对不起",
-    "没关系": "没关系",
-    "再见": "再见",
-    "请问": "请问",
-    "超市": "超市",
-    "怎么": "怎么",
-    "是不是": "是不是",
-    "哪里": "哪里",
-    "什么": "什么",
-    "为什么": "为什么",
-    "多少": "多少",
-    "非常": "非常",
-    "高兴": "高兴",
-    "难过": "难过",
-    "累": "累",
-    "忙": "忙",
-    "漂亮": "漂亮",
-    "叫": "叫",
-    "告诉": "告诉",
-    "帮助": "帮助",
-    "工作": "工作",
-    "学习": "学习",
-    "休息": "休息",
-    "睡觉": "睡觉",
 }
 
 # 常用语序模板（多 Token → 完整句子）
@@ -208,28 +148,6 @@ class MockTranslateModel(TextTranslateModel):
         elif not any(result.endswith(p) for p in punctuation_ends):
             result += "。"
 
-        return result
-
-    def translate_with_emotion(self, words: list[str], emotion_context: str) -> str:
-        """
-        带情感上下文的翻译。
-
-        Mock 模式下在翻译结果前添加情感前缀。
-        """
-        result = self.translate(words)
-        if emotion_context:
-            prefix_map = {
-                "高兴": "（开心地）",
-                "悲伤": "（难过地）",
-                "激动": "（激动地）",
-                "愤怒": "（生气地）",
-                "平静": "",
-            }
-            for key, prefix in prefix_map.items():
-                if key in emotion_context:
-                    if prefix:
-                        result = prefix + result
-                    break
         return result
 
     def unload(self) -> None:

@@ -104,7 +104,7 @@ def recognize_from_webcam(image: np.ndarray) -> tuple[np.ndarray, str, str]:
     sign_svc, translate_svc, _ = get_pipeline()
 
     # MediaPipe 检测
-    model = sign_svc._model
+    model = sign_svc.model
     if not hasattr(model, "predict_frame"):
         return image, "模型未就绪", ""
 

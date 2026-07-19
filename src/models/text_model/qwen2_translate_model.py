@@ -5,19 +5,34 @@ import torch
 from src.interfaces import TextTranslateModel
 
 _SYSTEM_PROMPT = (
-    "你是手语识别结果整理助手。"
-    "输入是计算机视觉模型识别出的手势词汇序列，可能存在误识别。"
-    "请你根据语义常识判断每个词是否合理："
-    "如果某个词导致整句不通顺，用语境最匹配的词替换它；"
-    "如果词汇顺序不符合中文习惯，自行调整语序；"
-    "根据上下文补充必要的连接词和标点。"
-    "只输出最终句子，不要解释修改过程。"
+    "你是手语词汇连词成句助手。"
+    "输入是手语识别出的中文词汇序列，你需要排成通顺的中文句子。"
+    "严格遵守："
+    "1. 必须使用输入的全部词汇，一个都不能少；"
+    "2. 不得把任何词替换成同义词（如'喜欢'不能改'爱'，'对不起'不能改'抱歉'）；"
+    "3. 不得新增输入中没有的实义词（名词、动词、形容词等）；"
+    "4. 只允许调整词序、补标点、补少量功能词（的、了、吗、呢、是）；"
+    "5. 只输出最终句子，不要解释。"
 )
+
+# Few-shot 示例：对 0.5B 小模型，示例比规则更有效
+_FEW_SHOT: list[dict] = [
+    {"role": "user", "content": "手语识别结果：你好"},
+    {"role": "assistant", "content": "你好！"},
+    {"role": "user", "content": "手语识别结果：我 喜欢 你"},
+    {"role": "assistant", "content": "我喜欢你。"},
+    {"role": "user", "content": "手语识别结果：你 喜欢 我"},
+    {"role": "assistant", "content": "你喜欢我吗？"},
+    {"role": "user", "content": "手语识别结果：你 是 谁"},
+    {"role": "assistant", "content": "你是谁？"},
+    {"role": "user", "content": "手语识别结果：请 帮助 我"},
+    {"role": "assistant", "content": "请帮助我。"},
+]
 
 
 class Qwen2TranslateModel(TextTranslateModel):
     """
-    基于 Qwen2-1.5B-Instruct 的手语词汇重组模型。
+    基于 Qwen2-0.5B-Instruct 的手语词汇重组模型。
 
     Args:
         model_path: HuggingFace 模型名称或本地模型目录路径。
@@ -45,10 +60,11 @@ class Qwen2TranslateModel(TextTranslateModel):
         device_map = "auto" if use_gpu else None
 
         self._tokenizer = AutoTokenizer.from_pretrained(
-            self._model_path, trust_remote_code=True        )
+            self._model_path, trust_remote_code=True,
+        )
         self._model = AutoModelForCausalLM.from_pretrained(
             self._model_path,
-            torch_dtype=dtype,
+            dtype=dtype,
             device_map=device_map,
             trust_remote_code=True,
             local_files_only=True,
@@ -63,34 +79,10 @@ class Qwen2TranslateModel(TextTranslateModel):
             self.load()
 
         input_text = " ".join(words)
-        user_msg = f"手语识别结果（注意：识别可能有个别错误）：{input_text}"
+        user_msg = f"手语识别结果：{input_text}"
         messages = [
             {"role": "system", "content": _SYSTEM_PROMPT},
-            {"role": "user", "content": user_msg},
-        ]
-
-        return self._generate(messages)
-
-    def translate_with_emotion(self, words: list[str], emotion_context: str) -> str:
-        """
-        带情感上下文的手语词汇重组。
-
-        Args:
-            words: 手语识别出的词汇列表。
-            emotion_context: 情感上下文提示词（如 "说话者此刻心情愉悦、开心"）。
-        """
-        if not words:
-            raise ValueError("words 不能为空列表")
-        if not self.is_loaded():
-            self.load()
-
-        input_text = " ".join(words)
-        user_msg = (
-            f"手语识别结果（注意：识别可能有个别错误）：{input_text}\n"
-            f"{emotion_context}"
-        )
-        messages = [
-            {"role": "system", "content": _SYSTEM_PROMPT},
+            *_FEW_SHOT,
             {"role": "user", "content": user_msg},
         ]
 
@@ -121,7 +113,6 @@ class Qwen2TranslateModel(TextTranslateModel):
                 **inputs,
                 max_new_tokens=self._max_new_tokens,
                 do_sample=False,
-                temperature=0.0,
                 pad_token_id=self._tokenizer.eos_token_id,
             )
 
