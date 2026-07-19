@@ -67,7 +67,6 @@ class Qwen2TranslateModel(TextTranslateModel):
             dtype=dtype,
             device_map=device_map,
             trust_remote_code=True,
-            local_files_only=True,
         )
 
         self._model.eval()

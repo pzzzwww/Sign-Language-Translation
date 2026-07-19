@@ -23,8 +23,8 @@ MODEL_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 os.environ["HF_HOME"] = str(MODEL_CACHE_DIR)
 os.environ["HF_HUB_CACHE"] = str(MODEL_CACHE_DIR / "hub")
-# 国内用户可设置 HF_ENDPOINT=https://hf-mirror.com 加速下载
-# os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
+# 国内用户默认使用 hf-mirror 加速下载，国际用户可设置 HF_ENDPOINT=https://huggingface.co 覆盖
+os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
 # 离线模式：仅使用本地缓存。设置 HF_HUB_OFFLINE=1 可跳过在线检查
 # os.environ.setdefault("HF_HUB_OFFLINE", "1")
 

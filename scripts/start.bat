@@ -4,7 +4,7 @@ chcp 65001 >nul
 title SL-Translator
 cd /d "%~dp0"
 
-set PYTHON=C:\Users\yng\.conda\envs\torch\python.exe
+set PYTHON=python
 set PORT=8000
 
 echo.
@@ -13,11 +13,6 @@ echo   SL-Translator
 echo ================================================
 echo.
 
-if not exist "%PYTHON%" (
-    echo [ERROR] Python not found: %PYTHON%
-    pause
-    exit /b 1
-)
 
 if not exist ".deps_installed" (
     echo [*] Installing deps...
@@ -31,7 +26,7 @@ for /f "tokens=2 delims=:" %%a in ('ipconfig ^| findstr /C:"IPv4"') do (
     if not "!IP!"=="127.0.0.1" goto :show
 )
 :show
-if "%IP%"=="" set IP=10.8.165.18
+if "%IP%"=="" set IP=127.0.0.1
 
 echo.
 echo ================================================

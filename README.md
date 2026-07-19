@@ -102,7 +102,7 @@ $env:NO_SSL=1; python -m src.backend.main
 
 浏览器访问后点击「开始采集」，摄像头前比划手势即可。
 
-> Qwen2-0.5B 首次启动自动下载（约 1GB）。如不想下载，修改 `src/config.py` 中 `TRANSLATION_MODE = "mock"`。
+> **首次启动自动下载 Qwen2-0.5B（约 1GB）**。默认走 `hf-mirror.com` 国内镜像加速，国际用户可设置环境变量 `HF_ENDPOINT=https://huggingface.co` 切回官方源。如不想下载，修改 `src/config.py` 中 `TRANSLATION_MODE = "mock"`。
 
 ---
 
