@@ -1,21 +1,13 @@
-<div align="center">
-
 # Sign Language Translation
 
-### 基于 Transformer 的实时手语识别与语音合成系统
-
-让无声的表达被听见
+> 基于 Transformer 的实时手语识别与语音合成系统 — 让无声的表达被听见
 
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10+-blue)](https://www.python.org/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.5+-orange)](https://pytorch.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-teal)](https://fastapi.tiangolo.com/)
 
-</div>
-
-<div align="center">
-  <img src="assets/demo.png" alt="项目效果图" width="800">
-</div>
+![项目效果图](assets/demo.png)
 
 ---
 
