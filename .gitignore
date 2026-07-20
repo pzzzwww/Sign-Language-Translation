@@ -8,7 +8,13 @@ build/
 
 # 虚拟环境
 .venv/
+venv/
+venv_gpu/
 .env
+
+# 临时计划文件
+plan.txt
+plan_placeholder.txt
 
 # 模型缓存（HuggingFace）
 src/models/cache/

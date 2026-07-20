@@ -36,11 +36,43 @@ try:
     import torch.nn.functional as F
 
     _TORCH_AVAILABLE = True
-except ImportError:
+except (ImportError, OSError):
     _TORCH_AVAILABLE = False
-    torch = None
-    nn = None
-    F = None
+    torch = None  # type: ignore
+    F = None  # type: ignore
+
+    # 创建假的 nn.Module，让类定义不会因为继承 None 而崩溃
+    class _DummyModule:
+        """PyTorch 不可用时的占位基类，仅让类定义通过，不提供实际功能。"""
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def __call__(self, *args, **kwargs):
+            raise RuntimeError("PyTorch 不可用，无法执行神经网络推理")
+
+        def eval(self):
+            return self
+
+        def to(self, device):
+            return self
+
+    class _DummyNN:
+        Module = _DummyModule
+        Parameter = lambda *a, **k: None
+        Linear = lambda *a, **k: None
+        Sequential = lambda *a, **k: _DummyModule()
+        LayerNorm = lambda *a, **k: None
+        GELU = lambda: None
+        Dropout = lambda *a, **k: None
+        TransformerEncoderLayer = lambda **k: None
+        TransformerEncoder = lambda **k: None
+
+        class init:
+            @staticmethod
+            def trunc_normal_(tensor, std=0.02):
+                pass
+
+    nn = _DummyNN()
 
 
 # ======================================================================

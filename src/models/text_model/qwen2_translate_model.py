@@ -1,50 +1,44 @@
 from __future__ import annotations
 
-import torch
+import sys
+from pathlib import Path
+from typing import Optional
+
+try:
+    import torch
+    _TORCH_TEXT_AVAILABLE = True
+except (ImportError, OSError):
+    _TORCH_TEXT_AVAILABLE = False
+    torch = None
 
 from src.interfaces import TextTranslateModel
 
 _SYSTEM_PROMPT = (
-    "你是手语词汇连词成句助手。"
-    "输入是手语识别出的中文词汇序列，你需要排成通顺的中文句子。"
-    "严格遵守："
-    "1. 必须使用输入的全部词汇，一个都不能少；"
-    "2. 不得把任何词替换成同义词（如'喜欢'不能改'爱'，'对不起'不能改'抱歉'）；"
-    "3. 不得新增输入中没有的实义词（名词、动词、形容词等）；"
-    "4. 只允许调整词序、补标点、补少量功能词（的、了、吗、呢、是）；"
-    "5. 只输出最终句子，不要解释。"
+    "你是手语文本整理助手。将手语识别 token 重组为语义通顺的自然中文句子。"
+    "规则：必须使用全部输入 token、不增删替换任何实义词、"
+    "根据语境自动添加标点和必要的连接词（如的、了、是、吗、呢）、"
+    "只输出最终句子。"
 )
 
-# Few-shot 示例：对 0.5B 小模型，示例比规则更有效
-_FEW_SHOT: list[dict] = [
-    {"role": "user", "content": "手语识别结果：你好"},
-    {"role": "assistant", "content": "你好！"},
-    {"role": "user", "content": "手语识别结果：我 喜欢 你"},
-    {"role": "assistant", "content": "我喜欢你。"},
-    {"role": "user", "content": "手语识别结果：你 喜欢 我"},
-    {"role": "assistant", "content": "你喜欢我吗？"},
-    {"role": "user", "content": "手语识别结果：你 是 谁"},
-    {"role": "assistant", "content": "你是谁？"},
-    {"role": "user", "content": "手语识别结果：请 帮助 我"},
-    {"role": "assistant", "content": "请帮助我。"},
-]
 
-
-class Qwen2TranslateModel(TextTranslateModel):
+class Qwen2LoRAModel(TextTranslateModel):
     """
-    基于 Qwen2-0.5B-Instruct 的手语词汇重组模型。
+    基于 Qwen2-1.5B-Instruct + LoRA 微调的手语词汇重组模型。
 
     Args:
         model_path: HuggingFace 模型名称或本地模型目录路径。
+        lora_path:  可选，LoRA 适配器目录路径。为 None 时使用原始基座模型。
         max_new_tokens: 生成句子的最大 token 数。
     """
 
     def __init__(
         self,
         model_path: str = "Qwen/Qwen2-0.5B-Instruct",
+        lora_path: Optional[str | Path] = None,
         max_new_tokens: int = 40,
     ) -> None:
         self._model_path = model_path
+        self._lora_path = Path(lora_path) if lora_path else None
         self._max_new_tokens = max_new_tokens
         self._model = None
         self._tokenizer = None
@@ -60,14 +54,19 @@ class Qwen2TranslateModel(TextTranslateModel):
         device_map = "auto" if use_gpu else None
 
         self._tokenizer = AutoTokenizer.from_pretrained(
-            self._model_path, trust_remote_code=True,
-        )
+            self._model_path, trust_remote_code=True        )
         self._model = AutoModelForCausalLM.from_pretrained(
             self._model_path,
-            dtype=dtype,
+            torch_dtype=dtype,
             device_map=device_map,
             trust_remote_code=True,
+            local_files_only=True,
         )
+
+        if self._lora_path is not None:
+            from peft import PeftModel
+            self._model = PeftModel.from_pretrained(self._model, str(self._lora_path))
+            self._model = self._model.merge_and_unload()
 
         self._model.eval()
 
@@ -78,10 +77,34 @@ class Qwen2TranslateModel(TextTranslateModel):
             self.load()
 
         input_text = " ".join(words)
-        user_msg = f"手语识别结果：{input_text}"
+        user_msg = f"以下是手语识别的乱序词汇，请重组为通顺句子：{input_text}"
         messages = [
             {"role": "system", "content": _SYSTEM_PROMPT},
-            *_FEW_SHOT,
+            {"role": "user", "content": user_msg},
+        ]
+
+        return self._generate(messages)
+
+    def translate_with_emotion(self, words: list[str], emotion_context: str) -> str:
+        """
+        带情感上下文的手语词汇重组。
+
+        Args:
+            words: 手语识别出的词汇列表。
+            emotion_context: 情感上下文提示词（如 "说话者此刻心情愉悦、开心"）。
+        """
+        if not words:
+            raise ValueError("words 不能为空列表")
+        if not self.is_loaded():
+            self.load()
+
+        input_text = " ".join(words)
+        user_msg = (
+            f"以下是手语识别的乱序词汇，请重组为通顺句子：{input_text}\n"
+            f"{emotion_context}"
+        )
+        messages = [
+            {"role": "system", "content": _SYSTEM_PROMPT},
             {"role": "user", "content": user_msg},
         ]
 
@@ -112,6 +135,7 @@ class Qwen2TranslateModel(TextTranslateModel):
                 **inputs,
                 max_new_tokens=self._max_new_tokens,
                 do_sample=False,
+                temperature=0.0,
                 pad_token_id=self._tokenizer.eos_token_id,
             )
 
