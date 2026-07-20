@@ -13,6 +13,10 @@
 
 </div>
 
+<div align="center">
+  <img src="assets/demo.png" alt="项目效果图" width="800">
+</div>
+
 ---
 
 ## 概述
