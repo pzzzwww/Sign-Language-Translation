@@ -11,6 +11,8 @@
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.5+-orange)](https://pytorch.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-teal)](https://fastapi.tiangolo.com/)
 
+[English](README.en.md) | 中文
+
 <img src="assets/demo.png" alt="项目效果图" width="800">
 
 </div>
